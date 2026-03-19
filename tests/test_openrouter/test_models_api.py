@@ -218,6 +218,49 @@ class TestCaching:
         assert mock_get.call_count == 1
 
 
+class TestParseModalities:
+    """Тесты парсинга строки модальности."""
+
+    @patch("ankiforge.openrouter.client.requests.get")
+    def test_empty_modality_string(self, mock_get: MagicMock) -> None:
+        """Пустая строка модальности — пустой список."""
+        data: dict[str, object] = {
+            "data": [
+                {
+                    "id": "test/model",
+                    "name": "Test",
+                    "pricing": {"prompt": "0", "completion": "0", "image": "0", "request": "0"},
+                    "architecture": {"modality": ""},
+                    "context_length": 4096,
+                }
+            ]
+        }
+        mock_get.return_value = _make_get_response(200, data)
+        client = OpenRouterClient(api_key=API_KEY)
+        models = client.fetch_models()
+        assert models[0].modalities == []
+
+    @patch("ankiforge.openrouter.client.requests.get")
+    def test_compound_output_modality(self, mock_get: MagicMock) -> None:
+        """Compound output парсит несколько модальностей (text+image->text+audio)."""
+        data: dict[str, object] = {
+            "data": [
+                {
+                    "id": "test/multi",
+                    "name": "Multi",
+                    "pricing": {"prompt": "0", "completion": "0", "image": "0", "request": "0"},
+                    "architecture": {"modality": "text->text+audio"},
+                    "context_length": 4096,
+                }
+            ]
+        }
+        mock_get.return_value = _make_get_response(200, data)
+        client = OpenRouterClient(api_key=API_KEY)
+        models = client.fetch_models()
+        assert Modality.TEXT in models[0].modalities
+        assert Modality.AUDIO in models[0].modalities
+
+
 class TestEstimateCost:
     def _make_text_model(self) -> Model:
         return Model(
@@ -309,3 +352,29 @@ class TestEstimateCost:
         cost_5 = client.estimate_cost(mode="questions", card_count=5, text_model=text_model)
         cost_10 = client.estimate_cost(mode="questions", card_count=10, text_model=text_model)
         assert cost_10 > cost_5
+
+    def test_estimate_cost_negative_cards(self) -> None:
+        """Отрицательное количество карточек -> стоимость 0."""
+        client = OpenRouterClient(api_key=API_KEY)
+        cost = client.estimate_cost(mode="questions", card_count=-5, text_model=self._make_text_model())
+        assert cost == 0.0
+
+    def test_estimate_cost_no_models_provided(self) -> None:
+        """Без моделей — стоимость 0."""
+        client = OpenRouterClient(api_key=API_KEY)
+        cost = client.estimate_cost(mode="questions", card_count=10)
+        assert cost == 0.0
+
+    def test_estimate_cost_language_text_only(self) -> None:
+        """Language mode с одним text_model — считает только текст."""
+        client = OpenRouterClient(api_key=API_KEY)
+        cost = client.estimate_cost(mode="language", card_count=10, text_model=self._make_text_model())
+        assert cost > 0.0
+
+    def test_estimate_cost_exact_calculation(self) -> None:
+        """Проверяем точный расчёт для questions mode."""
+        client = OpenRouterClient(api_key=API_KEY)
+        text_model = self._make_text_model()
+        cost = client.estimate_cost(mode="questions", card_count=1, text_model=text_model)
+        # prompt=0.000005 * 200 + completion=0.000015 * 150 = 0.001 + 0.00225 = 0.00325
+        assert abs(cost - 0.00325) < 1e-10
