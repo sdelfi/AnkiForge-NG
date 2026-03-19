@@ -15,7 +15,9 @@ def _register_addon() -> None:
 
     def on_main_window_init() -> None:
         """Инициализация после загрузки главного окна."""
-        pass
+        from ankiforge.config.dialog import setup_settings_menu
+
+        setup_settings_menu(mw)
 
     gui_hooks.main_window_did_init.append(on_main_window_init)
 
