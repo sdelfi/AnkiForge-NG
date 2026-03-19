@@ -7,13 +7,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ankiforge.anki_bridge.note_types import ensure_language_note_type, ensure_qa_note_type
+from ankiforge.anki_bridge.note_types import (
+    ensure_language_note_type,
+    ensure_qa_image_note_type,
+    ensure_qa_note_type,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 NOTE_TYPE_NAME = "AnkiForge QA"
+QA_IMAGE_NOTE_TYPE_NAME = "AnkiForge QA+Image"
 LANGUAGE_NOTE_TYPE_NAME = "AnkiForge Language"
 
 
@@ -356,6 +361,154 @@ class TestLanguageTemplateHtmlValidity:
     def test_back_template_is_valid_html(self, language_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
             result = ensure_language_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "<div" in back
+
+
+# ===========================================================================
+# ensure_qa_image_note_type
+# ===========================================================================
+
+QA_IMAGE_NOTE_TYPE_NAME = "AnkiForge QA+Image"
+
+
+@pytest.fixture()
+def qa_image_mock_mw() -> MagicMock:
+    """Мок для QA+Image тестов."""
+    return _make_mock_mw()
+
+
+class TestEnsureQaImageNoteTypeCreatesNew:
+    """Тесты создания нового QA+Image note type."""
+
+    def test_creates_note_type_when_not_exists(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        qa_image_mock_mw.col.models.add.assert_called_once()
+        assert result is not None
+
+    def test_sets_correct_name(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        assert result["name"] == QA_IMAGE_NOTE_TYPE_NAME
+
+    def test_has_three_fields(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert field_names == ["Question", "Answer", "Image"]
+
+    def test_has_question_field(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Question" in field_names
+
+    def test_has_answer_field(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Answer" in field_names
+
+    def test_has_image_field(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Image" in field_names
+
+    def test_has_one_template(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        assert len(result["tmpls"]) == 1
+
+    def test_front_template_contains_question(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "{{Question}}" in front
+
+    def test_back_template_contains_answer(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "{{Answer}}" in back
+
+    def test_back_template_contains_image(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "{{Image}}" in back
+
+    def test_image_has_max_width(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        assert "300px" in result["css"]
+
+    def test_image_has_rounded_corners(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        assert "border-radius" in result["css"]
+
+    def test_css_supports_night_mode(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        assert ".night_mode" in result["css"]
+
+    def test_css_uses_sans_serif(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        assert "sans-serif" in result["css"]
+
+    def test_has_ankiforge_branding(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "AnkiForge" in back
+
+
+class TestEnsureQaImageNoteTypeExisting:
+    """Тесты когда QA+Image note type уже существует."""
+
+    def test_returns_existing_note_type(self, qa_image_mock_mw: MagicMock) -> None:
+        existing = {"name": QA_IMAGE_NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
+        qa_image_mock_mw.col.models.by_name.return_value = existing
+
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        assert result is existing
+        qa_image_mock_mw.col.models.add.assert_not_called()
+
+
+class TestQaImageTemplateHtmlValidity:
+    """Проверка базовой валидности HTML шаблонов QA+Image."""
+
+    def test_front_template_is_valid_html(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "<div" in front
+
+    def test_back_template_is_valid_html(self, qa_image_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
 
         back = result["tmpls"][0]["afmt"]
         assert "<div" in back
