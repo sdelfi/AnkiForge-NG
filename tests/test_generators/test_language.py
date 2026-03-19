@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from ankiforge.generators.language import LanguageGenerator
 
 from ankiforge.anki_bridge.note_types import LANGUAGE_NOTE_TYPE_NAME
+from ankiforge.generators.language import LanguageGenerator
 from ankiforge.models import CardRequest, GeneratedCard, GenerationMode, GenerationProgress
 from ankiforge.openrouter.client import OpenRouterClient
 

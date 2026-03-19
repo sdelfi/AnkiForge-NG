@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from ankiforge.generators.image import ImageGenerator
 
 from ankiforge.anki_bridge.note_types import QA_IMAGE_NOTE_TYPE_NAME
+from ankiforge.generators.image import ImageGenerator
 from ankiforge.models import CardRequest, GenerationMode, GenerationProgress
 from ankiforge.openrouter.client import OpenRouterClient
 

@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from ankiforge.generators.material import MaterialGenerator
 
 from ankiforge.anki_bridge.note_types import QA_IMAGE_NOTE_TYPE_NAME, QA_NOTE_TYPE_NAME
+from ankiforge.generators.material import MaterialGenerator
 from ankiforge.models import CardRequest, GeneratedCard, GenerationMode, GenerationProgress
 from ankiforge.openrouter.client import OpenRouterClient
 
@@ -131,7 +131,11 @@ class TestChunking:
 
     def test_long_text_multiple_chunks(self, generator: MaterialGenerator) -> None:
         # 3 абзаца, каждый ~50 символов, лимит 80
-        text = "Абзац первый содержит информацию.\n\nАбзац второй содержит информацию.\n\nАбзац третий содержит информацию."
+        text = (
+            "Абзац первый содержит информацию.\n\n"
+            "Абзац второй содержит информацию.\n\n"
+            "Абзац третий содержит информацию."
+        )
         chunks = generator._split_into_chunks(text, max_chars=80)
         assert len(chunks) >= 2
 
