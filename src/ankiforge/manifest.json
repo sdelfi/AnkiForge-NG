@@ -1,0 +1,9 @@
+{
+    "package": "ankiforge",
+    "name": "AnkiForge",
+    "mod": 0,
+    "conflicts": [],
+    "min_point_version": 231000,
+    "max_point_version": 0,
+    "homepage": ""
+}
