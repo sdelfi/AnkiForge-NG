@@ -1,4 +1,4 @@
-"""OpenRouter API client — text, image, audio generation and cost estimation."""
+"""OpenRouter API client — text, image, audio generation, models and cost estimation."""
 
 from ankiforge.openrouter.client import OpenRouterClient
 from ankiforge.openrouter.exceptions import (
@@ -7,8 +7,12 @@ from ankiforge.openrouter.exceptions import (
     OpenRouterRateLimitError,
     OpenRouterTimeoutError,
 )
+from ankiforge.openrouter.models import Modality, Model, ModelPricing
 
 __all__ = [
+    "Model",
+    "ModelPricing",
+    "Modality",
     "OpenRouterClient",
     "OpenRouterAuthError",
     "OpenRouterError",
