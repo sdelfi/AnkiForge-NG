@@ -1,0 +1,154 @@
+"""Тесты для ankiforge.anki_bridge.note_types."""
+
+from __future__ import annotations
+
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from ankiforge.anki_bridge.note_types import ensure_qa_note_type
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+NOTE_TYPE_NAME = "AnkiForge QA"
+
+
+@pytest.fixture()
+def mock_mw() -> MagicMock:
+    """Мок главного окна Anki (mw) с col.models."""
+    mw = MagicMock()
+    mw.col.models.by_name.return_value = None  # note type не существует
+
+    model: dict[str, Any] = {
+        "name": "",
+        "flds": [],
+        "tmpls": [],
+        "css": "",
+    }
+    mw.col.models.new.return_value = model
+
+    # Имитируем поведение Anki: new_field/new_template возвращают dict,
+    # add_field/add_template добавляют в списки модели.
+    mw.col.models.new_field.side_effect = lambda name: {"name": name}
+    mw.col.models.add_field.side_effect = lambda m, f: m["flds"].append(f)
+    mw.col.models.new_template.side_effect = lambda name: {"name": name, "qfmt": "", "afmt": ""}
+    mw.col.models.add_template.side_effect = lambda m, t: m["tmpls"].append(t)
+
+    return mw
+
+
+# ---------------------------------------------------------------------------
+# ensure_qa_note_type — создание нового
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureQaNoteTypeCreatesNew:
+    """Тесты создания нового note type, когда его ещё нет."""
+
+    def test_creates_note_type_when_not_exists(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        mock_mw.col.models.add.assert_called_once()
+        assert result is not None
+
+    def test_sets_correct_name(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        assert result["name"] == NOTE_TYPE_NAME
+
+    def test_has_question_and_answer_fields(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Question" in field_names
+        assert "Answer" in field_names
+        assert len(field_names) == 2
+
+    def test_has_one_template(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        assert len(result["tmpls"]) == 1
+
+    def test_front_template_contains_question(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "{{Question}}" in front
+
+    def test_back_template_contains_answer(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "{{Answer}}" in back
+
+    def test_css_supports_night_mode(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        css = result["css"]
+        assert ".night_mode" in css or ".nightMode" in css
+
+    def test_css_uses_sans_serif(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        assert "sans-serif" in result["css"]
+
+    def test_has_ankiforge_branding(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "AnkiForge" in back
+
+
+# ---------------------------------------------------------------------------
+# ensure_qa_note_type — существующий note type
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureQaNoteTypeExisting:
+    """Тесты когда note type уже существует."""
+
+    def test_returns_existing_note_type(self, mock_mw: MagicMock) -> None:
+        existing = {"name": NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
+        mock_mw.col.models.by_name.return_value = existing
+
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        assert result is existing
+        mock_mw.col.models.add.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# HTML валидность
+# ---------------------------------------------------------------------------
+
+
+class TestTemplateHtmlValidity:
+    """Проверка базовой валидности HTML шаблонов."""
+
+    def test_front_template_is_valid_html(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        # Базовая проверка: содержит HTML-теги
+        assert "<div" in front or "<p" in front or "<span" in front
+
+    def test_back_template_is_valid_html(self, mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "<div" in back or "<p" in back or "<span" in back
