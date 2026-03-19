@@ -12,6 +12,13 @@ from ankiforge.anki_bridge.note_types import (
 )
 from ankiforge.config.manager import get_config, is_configured
 from ankiforge.models import CardRequest, GeneratedCard, GenerationMode, GenerationProgress
+from ankiforge.ui.progress_widget import (
+    GenerationWorker,
+    ProgressWidget,
+    _count_input_items,
+    _estimate_and_format_cost,
+    _format_summary,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -462,6 +469,7 @@ class InputDialog:
 
         self._mw = mw
         self._mode = mode
+        self._worker: GenerationWorker | None = None
 
         self._dialog = QDialog(mw)
         info = _get_mode_info(mode)
@@ -518,6 +526,10 @@ class InputDialog:
 
         layout.addLayout(form)
 
+        # --- Прогресс-виджет ---
+        self._progress_widget = ProgressWidget(self._dialog)
+        layout.addWidget(self._progress_widget.widget)
+
         # --- Статус ---
         self._status_label = QLabel("")
         layout.addWidget(self._status_label)
@@ -546,7 +558,7 @@ class InputDialog:
         return str(self._deck_combo.currentData()), False
 
     def _on_generate(self) -> None:
-        """Обработчик кнопки Generate — валидация, генерация, сохранение."""
+        """Обработчик кнопки Generate — валидация, оценка стоимости, асинхронная генерация."""
         deck_name, create_new = self._get_deck_name()
         config = get_config()
 
@@ -564,40 +576,93 @@ class InputDialog:
             self._status_label.setStyleSheet("color: red;")
             return
 
-        self._generate_btn.setEnabled(False)
-        self._status_label.setText("Генерация...")
-        self._status_label.setStyleSheet("color: blue;")
+        from ankiforge.openrouter.client import OpenRouterClient
 
+        client = OpenRouterClient(api_key=config.api_key)
+
+        # Подсчёт карточек и оценка стоимости
+        card_count = _count_input_items(request.input_text, self._mode)
+
+        # Попытка получить модели для оценки стоимости
         try:
-            from ankiforge.openrouter.client import OpenRouterClient
+            models = client.fetch_models()
+        except Exception:  # noqa: BLE001
+            models = []
 
-            client = OpenRouterClient(api_key=config.api_key)
-            generator = _create_generator(
-                mode=self._mode,
-                client=client,
-                text_model=config.text_model,
-                image_model=config.image_model,
-                audio_model=config.audio_model,
-                include_images=request.include_images,
-            )
+        cost_text = _estimate_and_format_cost(
+            client=client,
+            mode=self._mode,
+            card_count=card_count,
+            models=models,
+            text_model_id=config.text_model,
+            image_model_id=config.image_model,
+            audio_model_id=config.audio_model,
+        )
 
-            def progress_cb(progress: GenerationProgress) -> None:
-                self._status_label.setText(f"Генерация: {progress.completed_cards} / {progress.total_cards}")
+        # Блокируем UI и показываем прогресс
+        self._generate_btn.setEnabled(False)
+        self._status_label.setText("")
+        self._progress_widget.show(cost_text, card_count)
 
-            cards = generator.generate(request, progress_cb)
+        # Создаём генератор
+        generator = _create_generator(
+            mode=self._mode,
+            client=client,
+            text_model=config.text_model,
+            image_model=config.image_model,
+            audio_model=config.audio_model,
+            include_images=request.include_images,
+        )
 
-            # Ensure note types exist
-            self._ensure_note_types(self._mode)
+        # Ensure note types exist (до запуска потока — работает с Anki API из главного потока)
+        self._ensure_note_types(self._mode)
 
-            _save_cards_to_deck(cards, request.target_deck, create_new=request.create_new_deck)
+        # Сохраняем request для использования в callbacks
+        self._current_request = request
 
-            self._status_label.setText(f"Готово! Создано карточек: {len(cards)}")
-            self._status_label.setStyleSheet("color: green;")
-        except Exception as e:  # noqa: BLE001
-            self._status_label.setText(f"Ошибка: {e}")
-            self._status_label.setStyleSheet("color: red;")
-        finally:
-            self._generate_btn.setEnabled(True)
+        # Запускаем генерацию в фоновом потоке
+        self._worker = GenerationWorker(generator, request)
+        self._worker.connect_progress(self._on_progress_updated)
+        self._worker.connect_finished(self._on_generation_finished)
+        self._worker.connect_error(self._on_generation_error)
+        self._progress_widget.cancel_button.clicked.connect(self._on_cancel)  # type: ignore[attr-defined]
+        self._worker.start()
+
+    def _on_progress_updated(self, progress: GenerationProgress) -> None:
+        """Обновляет UI по сигналу прогресса из рабочего потока."""
+        self._last_progress = progress
+        self._progress_widget.update_progress(progress)
+
+    def _on_generation_finished(self, cards: list[GeneratedCard]) -> None:
+        """Обработка успешного завершения генерации."""
+        request = self._current_request
+
+        _save_cards_to_deck(cards, request.target_deck, create_new=request.create_new_deck)
+
+        # Вычисляем итоговую стоимость (из последнего прогресса)
+        total_cost = 0.0
+        if hasattr(self, "_last_progress"):
+            total_cost = self._last_progress.current_cost
+
+        summary = _format_summary(len(cards), total_cost)
+        self._progress_widget.finish(summary)
+        self._status_label.setText(summary)
+        self._status_label.setStyleSheet("color: green;")
+        self._generate_btn.setEnabled(True)
+        self._worker = None
+
+    def _on_generation_error(self, error_msg: str) -> None:
+        """Обработка ошибки генерации."""
+        self._progress_widget.hide()
+        self._status_label.setText(f"Ошибка: {error_msg}")
+        self._status_label.setStyleSheet("color: red;")
+        self._generate_btn.setEnabled(True)
+        self._worker = None
+
+    def _on_cancel(self) -> None:
+        """Отменяет текущую генерацию."""
+        if self._worker is not None:
+            self._worker.cancel()
 
     def _ensure_note_types(self, mode: GenerationMode) -> None:
         """Создаёт нужные note types для выбранного режима."""
