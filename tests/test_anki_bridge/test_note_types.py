@@ -9,9 +9,12 @@ import pytest
 
 from ankiforge.anki_bridge.note_types import (
     ensure_language_note_type,
+    ensure_qa_audio_note_type,
     ensure_qa_image_note_type,
     ensure_qa_note_type,
 )
+
+QA_AUDIO_NOTE_TYPE_NAME = "AnkiForge QA+Audio"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -509,6 +512,142 @@ class TestQaImageTemplateHtmlValidity:
     def test_back_template_is_valid_html(self, qa_image_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
             result = ensure_qa_image_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "<div" in back
+
+
+# ===========================================================================
+# ensure_qa_audio_note_type
+# ===========================================================================
+
+QA_AUDIO_NOTE_TYPE_NAME = "AnkiForge QA+Audio"
+
+
+@pytest.fixture()
+def qa_audio_mock_mw() -> MagicMock:
+    """Мок для QA+Audio тестов."""
+    return _make_mock_mw()
+
+
+class TestEnsureQaAudioNoteTypeCreatesNew:
+    """Тесты создания нового QA+Audio note type."""
+
+    def test_creates_note_type_when_not_exists(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        qa_audio_mock_mw.col.models.add.assert_called_once()
+        assert result is not None
+
+    def test_sets_correct_name(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        assert result["name"] == QA_AUDIO_NOTE_TYPE_NAME
+
+    def test_has_three_fields(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert field_names == ["Question", "Answer", "Audio"]
+
+    def test_has_question_field(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Question" in field_names
+
+    def test_has_answer_field(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Answer" in field_names
+
+    def test_has_audio_field(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Audio" in field_names
+
+    def test_has_one_template(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        assert len(result["tmpls"]) == 1
+
+    def test_front_template_contains_question(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "{{Question}}" in front
+
+    def test_front_template_contains_audio_autoplay(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "{{Audio}}" in front
+
+    def test_back_template_contains_answer(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "{{Answer}}" in back
+
+    def test_css_supports_night_mode(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        assert ".night_mode" in result["css"]
+
+    def test_css_uses_sans_serif(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        assert "sans-serif" in result["css"]
+
+    def test_has_ankiforge_branding(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "AnkiForge" in back
+
+
+class TestEnsureQaAudioNoteTypeExisting:
+    """Тесты когда QA+Audio note type уже существует."""
+
+    def test_returns_existing_note_type(self, qa_audio_mock_mw: MagicMock) -> None:
+        existing = {"name": QA_AUDIO_NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
+        qa_audio_mock_mw.col.models.by_name.return_value = existing
+
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        assert result is existing
+        qa_audio_mock_mw.col.models.add.assert_not_called()
+
+
+class TestQaAudioTemplateHtmlValidity:
+    """Проверка базовой валидности HTML шаблонов QA+Audio."""
+
+    def test_front_template_is_valid_html(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "<div" in front
+
+    def test_back_template_is_valid_html(self, qa_audio_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
 
         back = result["tmpls"][0]["afmt"]
         assert "<div" in back
