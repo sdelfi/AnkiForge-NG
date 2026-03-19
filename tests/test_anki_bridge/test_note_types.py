@@ -7,18 +7,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ankiforge.anki_bridge.note_types import ensure_qa_note_type
+from ankiforge.anki_bridge.note_types import ensure_language_note_type, ensure_qa_note_type
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 NOTE_TYPE_NAME = "AnkiForge QA"
+LANGUAGE_NOTE_TYPE_NAME = "AnkiForge Language"
 
 
-@pytest.fixture()
-def mock_mw() -> MagicMock:
-    """Мок главного окна Anki (mw) с col.models."""
+def _make_mock_mw() -> MagicMock:
+    """Создаёт мок главного окна Anki (mw) с col.models."""
     mw = MagicMock()
     mw.col.models.by_name.return_value = None  # note type не существует
 
@@ -38,6 +38,18 @@ def mock_mw() -> MagicMock:
     mw.col.models.add_template.side_effect = lambda m, t: m["tmpls"].append(t)
 
     return mw
+
+
+@pytest.fixture()
+def mock_mw() -> MagicMock:
+    """Мок главного окна Anki (mw) с col.models."""
+    return _make_mock_mw()
+
+
+@pytest.fixture()
+def language_mock_mw() -> MagicMock:
+    """Отдельный мок для Language тестов (свой model dict)."""
+    return _make_mock_mw()
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +143,7 @@ class TestEnsureQaNoteTypeExisting:
 
 
 # ---------------------------------------------------------------------------
-# HTML валидность
+# HTML валидность (QA)
 # ---------------------------------------------------------------------------
 
 
@@ -152,3 +164,198 @@ class TestTemplateHtmlValidity:
 
         back = result["tmpls"][0]["afmt"]
         assert "<div" in back or "<p" in back or "<span" in back
+
+
+# ===========================================================================
+# ensure_language_note_type
+# ===========================================================================
+
+
+class TestEnsureLanguageNoteTypeCreatesNew:
+    """Тесты создания нового Language note type."""
+
+    def test_creates_note_type_when_not_exists(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        language_mock_mw.col.models.add.assert_called_once()
+        assert result is not None
+
+    def test_sets_correct_name(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        assert result["name"] == LANGUAGE_NOTE_TYPE_NAME
+
+    def test_has_five_fields(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert field_names == ["Word", "Audio", "Definition", "Example", "Image"]
+
+    def test_has_word_field(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Word" in field_names
+
+    def test_has_audio_field(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Audio" in field_names
+
+    def test_has_definition_field(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Definition" in field_names
+
+    def test_has_example_field(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Example" in field_names
+
+    def test_has_image_field(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        field_names = [f["name"] for f in result["flds"]]
+        assert "Image" in field_names
+
+    def test_has_one_template(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        assert len(result["tmpls"]) == 1
+
+    def test_front_template_contains_word(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "{{Word}}" in front
+
+    def test_front_template_contains_audio(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "{{Audio}}" in front
+
+    def test_back_template_contains_definition(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "{{Definition}}" in back
+
+    def test_back_template_contains_example(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "{{Example}}" in back
+
+    def test_back_template_contains_image(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "{{Image}}" in back
+
+    def test_css_supports_night_mode(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        css = result["css"]
+        assert ".night_mode" in css
+
+    def test_css_uses_sans_serif(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        assert "sans-serif" in result["css"]
+
+    def test_has_ankiforge_branding(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "AnkiForge" in back
+
+    def test_image_has_max_width(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        css = result["css"]
+        assert "300px" in css
+
+    def test_image_has_rounded_corners(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        css = result["css"]
+        assert "border-radius" in css
+
+    def test_definition_visually_highlighted(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        css = result["css"]
+        assert ".definition" in css
+
+    def test_example_italic_style(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        css = result["css"]
+        assert "italic" in css
+
+
+# ---------------------------------------------------------------------------
+# ensure_language_note_type — существующий
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureLanguageNoteTypeExisting:
+    """Тесты когда Language note type уже существует."""
+
+    def test_returns_existing_note_type(self, language_mock_mw: MagicMock) -> None:
+        existing = {"name": LANGUAGE_NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
+        language_mock_mw.col.models.by_name.return_value = existing
+
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        assert result is existing
+        language_mock_mw.col.models.add.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# HTML валидность (Language)
+# ---------------------------------------------------------------------------
+
+
+class TestLanguageTemplateHtmlValidity:
+    """Проверка базовой валидности HTML шаблонов Language."""
+
+    def test_front_template_is_valid_html(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "<div" in front
+
+    def test_back_template_is_valid_html(self, language_mock_mw: MagicMock) -> None:
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        back = result["tmpls"][0]["afmt"]
+        assert "<div" in back
