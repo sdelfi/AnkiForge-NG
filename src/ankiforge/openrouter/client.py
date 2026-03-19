@@ -1,7 +1,8 @@
-"""OpenRouter API клиент — текстовая генерация."""
+"""OpenRouter API клиент — текстовая, image и audio генерация."""
 
 from __future__ import annotations
 
+import base64
 import time
 
 import requests
@@ -134,6 +135,52 @@ class OpenRouterClient:
             status_code=resp.status_code,
         )
 
+    def generate_image(self, prompt: str, model: str) -> bytes:
+        """Генерация изображения через OpenRouter API.
+
+        Args:
+            prompt: Описание изображения.
+            model: ID модели (например, 'openai/dall-e-3').
+
+        Returns:
+            Байты изображения (PNG).
+
+        Raises:
+            OpenRouterAuthError: Невалидный API-ключ (401).
+            OpenRouterRateLimitError: Превышен rate limit (429).
+            OpenRouterTimeoutError: Таймаут запроса.
+            OpenRouterError: Прочие ошибки API.
+        """
+        body: dict[str, object] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        response = self._request_with_retry(body)
+        return self._parse_image_response(response)
+
+    def generate_audio(self, text: str, model: str) -> bytes:
+        """Генерация аудио (TTS) через OpenRouter API.
+
+        Args:
+            text: Текст для озвучивания.
+            model: ID модели (например, 'openai/tts-1').
+
+        Returns:
+            Байты аудио (mp3).
+
+        Raises:
+            OpenRouterAuthError: Невалидный API-ключ (401).
+            OpenRouterRateLimitError: Превышен rate limit (429).
+            OpenRouterTimeoutError: Таймаут запроса.
+            OpenRouterError: Прочие ошибки API.
+        """
+        body: dict[str, object] = {
+            "model": model,
+            "messages": [{"role": "user", "content": text}],
+        }
+        response = self._request_with_retry(body)
+        return self._parse_audio_response(response)
+
     def _parse_text_response(self, resp: requests.Response) -> str:
         """Извлекает текст из JSON-ответа OpenRouter."""
         try:
@@ -150,6 +197,56 @@ class OpenRouterClient:
             raise OpenRouterError("API вернул пустой content")
 
         return content
+
+    def _parse_image_response(self, resp: requests.Response) -> bytes:
+        """Извлекает изображение из JSON-ответа OpenRouter."""
+        try:
+            data = resp.json()
+        except (ValueError, TypeError) as e:
+            raise OpenRouterError("Ошибка парсинг JSON-ответа") from e
+
+        choices = data.get("choices", [])
+        if not choices:
+            raise OpenRouterError("API вернул пустой choices")
+
+        message = choices[0].get("message", {})
+        images = message.get("images", [])
+        if not images:
+            raise OpenRouterError("API не вернул изображение")
+
+        url: str = images[0].get("image_url", {}).get("url", "")
+        prefix = "base64,"
+        idx = url.find(prefix)
+        if idx == -1:
+            raise OpenRouterError("Ответ не содержит base64-данных изображения")
+
+        b64_data = url[idx + len(prefix) :]
+        try:
+            return base64.b64decode(b64_data)
+        except Exception as e:
+            raise OpenRouterError("Ошибка декодирования base64 изображения") from e
+
+    def _parse_audio_response(self, resp: requests.Response) -> bytes:
+        """Извлекает аудио из JSON-ответа OpenRouter."""
+        try:
+            data = resp.json()
+        except (ValueError, TypeError) as e:
+            raise OpenRouterError("Ошибка парсинг JSON-ответа") from e
+
+        choices = data.get("choices", [])
+        if not choices:
+            raise OpenRouterError("API вернул пустой choices")
+
+        message = choices[0].get("message", {})
+        audio = message.get("audio")
+        if not audio or not audio.get("data"):
+            raise OpenRouterError("API не вернул аудио данные")
+
+        b64_data: str = audio["data"]
+        try:
+            return base64.b64decode(b64_data)
+        except Exception as e:
+            raise OpenRouterError("Ошибка декодирования base64 аудио") from e
 
     def _sleep_backoff(self, attempt: int) -> None:
         """Экспоненциальная задержка между retry."""

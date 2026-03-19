@@ -1,4 +1,4 @@
-"""Тесты для OpenRouterClient — текстовая генерация."""
+"""Тесты для OpenRouterClient — текстовая, image и audio генерация."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
-from ankiforge.openrouter.client import OpenRouterClient
 
+from ankiforge.openrouter.client import OpenRouterClient
 from ankiforge.openrouter.exceptions import (
     OpenRouterAuthError,
     OpenRouterError,
@@ -189,3 +189,196 @@ class TestRetry:
         client.generate_text("test", model=MODEL)
         delays = [call.args[0] for call in mock_sleep.call_args_list]
         assert delays[0] < delays[1]  # экспоненциальный рост
+
+
+# --- Image generation ---
+
+IMAGE_MODEL = "openai/dall-e-3"
+_FAKE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+import base64  # noqa: E402
+
+
+def _image_success_response(image_b64: str | None = None) -> MagicMock:
+    """Мок ответа OpenRouter с изображением."""
+    b64 = image_b64 or base64.b64encode(_FAKE_PNG).decode()
+    return _make_response(
+        200,
+        {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "images": [{"image_url": {"url": f"data:image/png;base64,{b64}"}}],
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 0},
+        },
+    )
+
+
+def _audio_success_response(audio_b64: str | None = None) -> MagicMock:
+    """Мок ответа OpenRouter с аудио."""
+    b64 = audio_b64 or base64.b64encode(b"fake-mp3-data").decode()
+    return _make_response(
+        200,
+        {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "audio": {"data": b64, "format": "mp3"},
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 0},
+        },
+    )
+
+
+class TestGenerateImage:
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_successful_image_generation(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _image_success_response()
+        client = OpenRouterClient(api_key=API_KEY)
+        result = client.generate_image("A cute cat", model=IMAGE_MODEL)
+        assert isinstance(result, bytes)
+        assert result == _FAKE_PNG
+
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_sends_image_modality(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _image_success_response()
+        client = OpenRouterClient(api_key=API_KEY)
+        client.generate_image("test", model=IMAGE_MODEL)
+        body = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json", {})
+        assert body["model"] == IMAGE_MODEL
+        assert body["messages"][0]["content"] == "test"
+
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_image_empty_images_list(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _make_response(
+            200, {"choices": [{"message": {"role": "assistant", "content": "", "images": []}}]}
+        )
+        client = OpenRouterClient(api_key=API_KEY)
+        with pytest.raises(OpenRouterError, match="изображен"):
+            client.generate_image("test", model=IMAGE_MODEL)
+
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_image_no_images_field(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _make_response(
+            200, {"choices": [{"message": {"role": "assistant", "content": "no images"}}]}
+        )
+        client = OpenRouterClient(api_key=API_KEY)
+        with pytest.raises(OpenRouterError, match="изображен"):
+            client.generate_image("test", model=IMAGE_MODEL)
+
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_image_invalid_base64(self, mock_post: MagicMock) -> None:
+        resp = _make_response(
+            200,
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "images": [{"image_url": {"url": "data:image/png;base64,!!!invalid!!!"}}],
+                        }
+                    }
+                ]
+            },
+        )
+        mock_post.return_value = resp
+        client = OpenRouterClient(api_key=API_KEY)
+        with pytest.raises(OpenRouterError, match="base64"):
+            client.generate_image("test", model=IMAGE_MODEL)
+
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_image_auth_error(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _make_response(401, {"error": {"message": "Invalid key"}})
+        client = OpenRouterClient(api_key="bad-key")
+        with pytest.raises(OpenRouterAuthError):
+            client.generate_image("test", model=IMAGE_MODEL)
+
+    @patch("ankiforge.openrouter.client.time.sleep")
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_image_retry_on_500(self, mock_post: MagicMock, mock_sleep: MagicMock) -> None:
+        mock_post.side_effect = [
+            _make_response(500, {"error": {"message": "Server error"}}),
+            _image_success_response(),
+        ]
+        client = OpenRouterClient(api_key=API_KEY, max_retries=2)
+        result = client.generate_image("test", model=IMAGE_MODEL)
+        assert isinstance(result, bytes)
+        assert mock_post.call_count == 2
+
+
+class TestGenerateAudio:
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_successful_audio_generation(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _audio_success_response()
+        client = OpenRouterClient(api_key=API_KEY)
+        result = client.generate_audio("Hello world", model="openai/tts-1")
+        assert isinstance(result, bytes)
+        assert result == b"fake-mp3-data"
+
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_sends_audio_params(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _audio_success_response()
+        client = OpenRouterClient(api_key=API_KEY)
+        client.generate_audio("test", model="openai/tts-1")
+        body = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json", {})
+        assert body["model"] == "openai/tts-1"
+        assert body["messages"][0]["content"] == "test"
+
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_audio_no_audio_field(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _make_response(
+            200, {"choices": [{"message": {"role": "assistant", "content": "no audio"}}]}
+        )
+        client = OpenRouterClient(api_key=API_KEY)
+        with pytest.raises(OpenRouterError, match="аудио"):
+            client.generate_audio("test", model="openai/tts-1")
+
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_audio_empty_data(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _make_response(
+            200,
+            {"choices": [{"message": {"role": "assistant", "audio": {"data": "", "format": "mp3"}}}]},
+        )
+        client = OpenRouterClient(api_key=API_KEY)
+        with pytest.raises(OpenRouterError, match="аудио"):
+            client.generate_audio("test", model="openai/tts-1")
+
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_audio_invalid_base64(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _make_response(
+            200,
+            {"choices": [{"message": {"role": "assistant", "audio": {"data": "!!!bad!!!", "format": "mp3"}}}]},
+        )
+        client = OpenRouterClient(api_key=API_KEY)
+        with pytest.raises(OpenRouterError, match="base64"):
+            client.generate_audio("test", model="openai/tts-1")
+
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_audio_auth_error(self, mock_post: MagicMock) -> None:
+        mock_post.return_value = _make_response(401, {"error": {"message": "Invalid key"}})
+        client = OpenRouterClient(api_key="bad-key")
+        with pytest.raises(OpenRouterAuthError):
+            client.generate_audio("test", model="openai/tts-1")
+
+    @patch("ankiforge.openrouter.client.time.sleep")
+    @patch("ankiforge.openrouter.client.requests.post")
+    def test_audio_retry_on_500(self, mock_post: MagicMock, mock_sleep: MagicMock) -> None:
+        mock_post.side_effect = [
+            _make_response(500, {"error": {"message": "Server error"}}),
+            _audio_success_response(),
+        ]
+        client = OpenRouterClient(api_key=API_KEY, max_retries=2)
+        result = client.generate_audio("test", model="openai/tts-1")
+        assert isinstance(result, bytes)
+        assert mock_post.call_count == 2
