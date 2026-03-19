@@ -385,3 +385,111 @@ class TestShouldShowImagesCheckbox:
         for mode in GenerationMode:
             if mode != GenerationMode.MATERIAL:
                 assert _should_show_images_checkbox(mode) is False, f"{mode} should not show images checkbox"
+
+
+# ---------------------------------------------------------------------------
+# Тесты _should_show_custom_prompt (TASK-022)
+# ---------------------------------------------------------------------------
+
+
+class TestShouldShowCustomPrompt:
+    """Проверяет когда показывать поле кастомного промпта."""
+
+    def test_language_mode_shows_custom_prompt(self) -> None:
+        from ankiforge.ui.generate_dialog import _should_show_custom_prompt
+
+        assert _should_show_custom_prompt(GenerationMode.LANGUAGE) is True
+
+    def test_other_modes_hide_custom_prompt(self) -> None:
+        from ankiforge.ui.generate_dialog import _should_show_custom_prompt
+
+        for mode in GenerationMode:
+            if mode != GenerationMode.LANGUAGE:
+                assert _should_show_custom_prompt(mode) is False, f"{mode} should not show custom prompt"
+
+
+# ---------------------------------------------------------------------------
+# Тесты _get_default_custom_prompt (TASK-022)
+# ---------------------------------------------------------------------------
+
+
+class TestGetDefaultCustomPrompt:
+    """Проверяет дефолтный промпт для language режима."""
+
+    def test_returns_non_empty_string(self) -> None:
+        from ankiforge.ui.generate_dialog import _get_default_custom_prompt
+
+        prompt = _get_default_custom_prompt()
+        assert isinstance(prompt, str)
+        assert len(prompt) > 0
+
+    def test_contains_definition_and_example(self) -> None:
+        from ankiforge.ui.generate_dialog import _get_default_custom_prompt
+
+        prompt = _get_default_custom_prompt()
+        assert "DEFINITION" in prompt
+        assert "EXAMPLE" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Тесты _build_card_request с custom_prompt (TASK-022)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCardRequestCustomPrompt:
+    """Проверяет передачу custom_prompt через _build_card_request."""
+
+    def test_custom_prompt_passed_to_request(self) -> None:
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        req = _build_card_request(
+            mode=GenerationMode.LANGUAGE,
+            input_text="hello",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+            custom_prompt="My custom instructions",
+        )
+        assert req.custom_prompt == "My custom instructions"
+
+    def test_none_custom_prompt_by_default(self) -> None:
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        req = _build_card_request(
+            mode=GenerationMode.QUESTIONS,
+            input_text="Q?",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+        )
+        assert req.custom_prompt is None
+
+    def test_empty_custom_prompt_becomes_none(self) -> None:
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        req = _build_card_request(
+            mode=GenerationMode.LANGUAGE,
+            input_text="hello",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+            custom_prompt="   ",
+        )
+        assert req.custom_prompt is None
+
+    def test_whitespace_stripped_from_custom_prompt(self) -> None:
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        req = _build_card_request(
+            mode=GenerationMode.LANGUAGE,
+            input_text="hello",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+            custom_prompt="  My prompt  ",
+        )
+        assert req.custom_prompt == "My prompt"

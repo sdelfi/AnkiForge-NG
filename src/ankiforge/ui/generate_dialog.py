@@ -122,6 +122,29 @@ def _should_show_images_checkbox(mode: GenerationMode) -> bool:
     return mode == GenerationMode.MATERIAL
 
 
+def _should_show_custom_prompt(mode: GenerationMode) -> bool:
+    """Определяет, нужно ли показывать поле кастомного промпта.
+
+    Args:
+        mode: Режим генерации.
+
+    Returns:
+        True только для режима LANGUAGE.
+    """
+    return mode == GenerationMode.LANGUAGE
+
+
+def _get_default_custom_prompt() -> str:
+    """Возвращает дефолтный промпт для языковых карточек.
+
+    Returns:
+        Текст промпта по умолчанию.
+    """
+    from ankiforge.generators.language import _DEFAULT_SYSTEM_PROMPT
+
+    return _DEFAULT_SYSTEM_PROMPT
+
+
 # ---------------------------------------------------------------------------
 # Фабрика генераторов (тестируемая без Qt)
 # ---------------------------------------------------------------------------
@@ -191,6 +214,7 @@ def _build_card_request(
     create_new_deck: bool,
     include_images: bool,
     language: str,
+    custom_prompt: str | None = None,
 ) -> CardRequest:
     """Собирает CardRequest из параметров формы.
 
@@ -201,6 +225,7 @@ def _build_card_request(
         create_new_deck: Создать новую колоду.
         include_images: Добавлять картинки (для material).
         language: Язык карточек.
+        custom_prompt: Кастомный промпт (для language режима).
 
     Returns:
         CardRequest.
@@ -215,6 +240,9 @@ def _build_card_request(
         msg = "Укажите имя колоды"
         raise ValueError(msg)
 
+    # Пустой/пробельный custom_prompt → None
+    cleaned_prompt = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else None
+
     return CardRequest(
         mode=mode,
         input_text=input_text.strip(),
@@ -222,6 +250,7 @@ def _build_card_request(
         create_new_deck=create_new_deck,
         include_images=include_images,
         language=language,
+        custom_prompt=cleaned_prompt,
     )
 
 
@@ -526,6 +555,23 @@ class InputDialog:
 
         layout.addLayout(form)
 
+        # --- Custom prompt (только для language) ---
+        if _should_show_custom_prompt(mode):
+            self._custom_prompt_toggle = QCheckBox("Custom prompt")
+            self._custom_prompt_toggle.setChecked(False)
+            layout.addWidget(self._custom_prompt_toggle)
+
+            self._custom_prompt_input = QPlainTextEdit()
+            self._custom_prompt_input.setPlaceholderText(_get_default_custom_prompt())
+            self._custom_prompt_input.setMaximumHeight(100)
+            self._custom_prompt_input.setVisible(False)
+            layout.addWidget(self._custom_prompt_input)
+
+            self._custom_prompt_toggle.toggled.connect(self._custom_prompt_input.setVisible)
+        else:
+            self._custom_prompt_toggle = None
+            self._custom_prompt_input = None
+
         # --- Прогресс-виджет ---
         self._progress_widget = ProgressWidget(self._dialog)
         layout.addWidget(self._progress_widget.widget)
@@ -562,6 +608,15 @@ class InputDialog:
         deck_name, create_new = self._get_deck_name()
         config = get_config()
 
+        # Custom prompt (только для language)
+        custom_prompt: str | None = None
+        if (
+            self._custom_prompt_input is not None
+            and self._custom_prompt_toggle is not None
+            and self._custom_prompt_toggle.isChecked()
+        ):
+            custom_prompt = self._custom_prompt_input.toPlainText()
+
         try:
             request = _build_card_request(
                 mode=self._mode,
@@ -570,6 +625,7 @@ class InputDialog:
                 create_new_deck=create_new,
                 include_images=self._images_checkbox.isChecked(),
                 language=config.language,
+                custom_prompt=custom_prompt,
             )
         except ValueError as e:
             self._status_label.setText(str(e))
