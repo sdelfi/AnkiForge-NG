@@ -61,13 +61,19 @@ def _on_generate_clicked(mw: AnkiQt) -> None:
     if _should_open_settings_first():
         from ankiforge.config.dialog import SettingsDialog
 
-        dialog = SettingsDialog(mw)
-        result = dialog.run()
+        settings_dialog = SettingsDialog(mw)
+        result = settings_dialog.run()
         # Если пользователь отменил настройки — не открываем генерацию
         if result == 0:  # QDialog.DialogCode.Rejected
             return
 
     from ankiforge.ui.generate_dialog import GenerateDialog
 
-    dialog = GenerateDialog(mw)
-    dialog.run()
+    generate_dialog = GenerateDialog(mw)
+    selected_mode = generate_dialog.run()
+
+    if selected_mode is not None:
+        from ankiforge.ui.generate_dialog import InputDialog
+
+        input_dialog = InputDialog(mw, selected_mode)
+        input_dialog.run()
