@@ -175,7 +175,7 @@ class TestBuildCardRequest:
     def test_empty_input_raises(self) -> None:
         from ankiforge.ui.generate_dialog import _build_card_request
 
-        with pytest.raises(ValueError, match="Введите данные"):
+        with pytest.raises(ValueError, match="Enter data to generate"):
             _build_card_request(
                 mode=GenerationMode.QUESTIONS,
                 input_text="   ",
@@ -188,7 +188,7 @@ class TestBuildCardRequest:
     def test_empty_deck_name_raises(self) -> None:
         from ankiforge.ui.generate_dialog import _build_card_request
 
-        with pytest.raises(ValueError, match="колоды"):
+        with pytest.raises(ValueError, match="Specify a deck name"):
             _build_card_request(
                 mode=GenerationMode.QUESTIONS,
                 input_text="Question?",

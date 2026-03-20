@@ -52,37 +52,37 @@ if TYPE_CHECKING:
 _MODE_INFO: dict[GenerationMode, dict[str, str]] = {
     GenerationMode.QUESTIONS: {
         "title": "Questions → Answers",
-        "subtitle": "Введите вопросы — AI сгенерирует развёрнутые ответы",
+        "subtitle": "Enter questions — AI will generate detailed answers",
         "icon": "\u2753",
     },
     GenerationMode.LANGUAGE: {
         "title": "Language Cards",
-        "subtitle": "Слова → definition, example, аудио, картинка",
+        "subtitle": "Words → definition, example, audio, image",
         "icon": "\U0001f30d",
     },
     GenerationMode.MATERIAL: {
         "title": "From Material",
-        "subtitle": "Текст → атомарные QA-карточки (опц. с картинками)",
+        "subtitle": "Text → atomic QA cards (optionally with images)",
         "icon": "\U0001f4da",
     },
     GenerationMode.IMAGE: {
         "title": "QA + Image",
-        "subtitle": "Вопросы с AI-сгенерированными иллюстрациями",
+        "subtitle": "Questions with AI-generated illustrations",
         "icon": "\U0001f5bc\ufe0f",
     },
     GenerationMode.AUDIO: {
         "title": "QA + Audio",
-        "subtitle": "Вопросы с аудио-озвучкой",
+        "subtitle": "Questions with text-to-speech audio",
         "icon": "\U0001f3a7",
     },
 }
 
 _INPUT_PLACEHOLDERS: dict[GenerationMode, str] = {
-    GenerationMode.QUESTIONS: "Введите вопросы (по одному на строку):\n\nЧто такое Python?\nКак работает GIL?",
-    GenerationMode.LANGUAGE: "Введите слова (по одному на строку или через запятую):\n\nabandon\nserendipity",
-    GenerationMode.MATERIAL: "Вставьте учебный текст для генерации карточек...",
-    GenerationMode.IMAGE: "Введите вопросы (по одному на строку):\n\nКак выглядит митохондрия?\nСтруктура ДНК",
-    GenerationMode.AUDIO: "Введите вопросы (по одному на строку):\n\nWhat is photosynthesis?\nExplain osmosis",
+    GenerationMode.QUESTIONS: "Enter questions (one per line):\n\nWhat is Python?\nHow does GIL work?",
+    GenerationMode.LANGUAGE: "Enter words (one per line or comma-separated):\n\nabandon\nserendipity",
+    GenerationMode.MATERIAL: "Paste study text to generate cards from...",
+    GenerationMode.IMAGE: "Enter questions (one per line):\n\nWhat does a mitochondria look like?\nDNA structure",
+    GenerationMode.AUDIO: "Enter questions (one per line):\n\nWhat is photosynthesis?\nExplain osmosis",
 }
 
 
@@ -394,7 +394,7 @@ def _create_generator(
 
         return AudioGenerator(client, text_model, audio_model, voice=voice)
 
-    msg = f"Неизвестный режим генерации: {mode}"
+    msg = f"Unknown generation mode: {mode}"
     raise ValueError(msg)
 
 
@@ -439,10 +439,10 @@ def _build_card_request(
         ValueError: Если данные невалидны.
     """
     if not input_text.strip():
-        msg = "Введите данные для генерации"
+        msg = "Enter data to generate"
         raise ValueError(msg)
     if not deck_name.strip():
-        msg = "Укажите имя колоды"
+        msg = "Specify a deck name"
         raise ValueError(msg)
 
     # Пустой/пробельный custom_prompt → None
@@ -749,7 +749,7 @@ class GenerateDialog:
         self._dialog.setLayout(layout)
 
         # --- Заголовок ---
-        title_label = QLabel("Выберите режим генерации")
+        title_label = QLabel("Choose generation mode")
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
@@ -784,7 +784,7 @@ class GenerateDialog:
             btn_layout.addLayout(text_layout)
 
             # Кнопка выбора
-            select_btn = QPushButton("Выбрать")
+            select_btn = QPushButton("Select")
             select_btn.setObjectName("selectBtn")
             select_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             select_btn.clicked.connect(self._make_mode_handler(mode))
@@ -796,11 +796,11 @@ class GenerateDialog:
 
         # --- Настройки / Отмена ---
         buttons_layout = QHBoxLayout()
-        settings_btn = QPushButton("Настройки")
+        settings_btn = QPushButton("Settings")
         settings_btn.clicked.connect(self._on_open_settings)
         buttons_layout.addWidget(settings_btn)
         buttons_layout.addStretch()
-        cancel_btn = QPushButton("Отмена")
+        cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(self._dialog.reject)
         buttons_layout.addWidget(cancel_btn)
         layout.addLayout(buttons_layout)
@@ -907,7 +907,7 @@ class InputDialog:
         layout.addWidget(subtitle)
 
         # === Секция 1: Данные для генерации ===
-        input_group = QGroupBox("Данные для генерации")
+        input_group = QGroupBox("Generation input")
         input_vlayout = QVBoxLayout()
         input_vlayout.setContentsMargins(8, 6, 8, 8)
         self._input_text = QPlainTextEdit()
@@ -918,7 +918,7 @@ class InputDialog:
         layout.addWidget(input_group)
 
         # === Секция 2: Настройки ===
-        settings_group = QGroupBox("Настройки")
+        settings_group = QGroupBox("Settings")
         settings_form = QFormLayout()
         settings_form.setSpacing(8)
         settings_form.setContentsMargins(8, 6, 8, 8)
@@ -927,7 +927,7 @@ class InputDialog:
         self._deck_combo = QComboBox()
         self._deck_combo.setEditable(True)
         self._deck_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self._deck_combo.lineEdit().setPlaceholderText("Выберите или создайте колоду...")
+        self._deck_combo.lineEdit().setPlaceholderText("Select or create a deck...")
 
         deck_completer = QCompleter()
         deck_completer.setFilterMode(Qt.MatchFlag.MatchContains)
@@ -948,9 +948,9 @@ class InputDialog:
         # Не выбираем колоду автоматически — пусть пользователь вводит сам
         self._deck_combo.setCurrentIndex(-1)
         deck_completer.setModel(self._deck_combo.model())
-        settings_form.addRow("Колода:", self._deck_combo)
+        settings_form.addRow("Deck:", self._deck_combo)
 
-        deck_hint = QLabel("Выберите существующую или введите новое имя для создания колоды")
+        deck_hint = QLabel("Pick an existing deck from the list, or type a new name to create one")
         deck_hint.setStyleSheet("color: #999999; font-size: 11px;")
         deck_hint.setWordWrap(True)
         settings_form.addRow("", deck_hint)
@@ -958,7 +958,7 @@ class InputDialog:
         # Язык карточек
         self._language_combo = QComboBox()
         self._language_combo.addItem("English", "en")
-        self._language_combo.addItem("Русский", "ru")
+        self._language_combo.addItem("Russian", "ru")
         self._language_combo.addItem("Deutsch", "de")
         self._language_combo.addItem("Français", "fr")
         self._language_combo.addItem("Español", "es")
@@ -971,10 +971,10 @@ class InputDialog:
             if self._language_combo.itemData(i) == config.language:
                 self._language_combo.setCurrentIndex(i)
                 break
-        settings_form.addRow("Язык:", self._language_combo)
+        settings_form.addRow("Language:", self._language_combo)
 
         # Чекбокс картинок — создаём здесь, но добавляем в «Опции генерации» для material
-        self._images_checkbox = QCheckBox("Добавить картинки к карточкам")
+        self._images_checkbox = QCheckBox("Add images to cards")
 
         settings_group.setLayout(settings_form)
         layout.addWidget(settings_group)
@@ -987,7 +987,7 @@ class InputDialog:
         self._answer_detail_combo: QComboBox | None = None
 
         if mode == GenerationMode.LANGUAGE:
-            opts_group = QGroupBox("Опции генерации")
+            opts_group = QGroupBox("Generation options")
             opts_form = QFormLayout()
             opts_form.setSpacing(8)
             opts_form.setContentsMargins(8, 6, 8, 8)
@@ -995,12 +995,12 @@ class InputDialog:
             opts_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
             checkbox_defs = [
-                ("include_photo", "Генерировать фото"),
-                ("include_audio_word", "Аудио: произношение слова"),
-                ("include_audio_definition", "Аудио: озвучка определения"),
-                ("include_audio_example", "Аудио: озвучка примера"),
-                ("include_transcription", "Фонетическая транскрипция (IPA)"),
-                ("detailed_image", "Детальное изображение (HD промпт)"),
+                ("include_photo", "Generate photo"),
+                ("include_audio_word", "Audio: word pronunciation"),
+                ("include_audio_definition", "Audio: definition narration"),
+                ("include_audio_example", "Audio: example narration"),
+                ("include_transcription", "Phonetic transcription (IPA)"),
+                ("detailed_image", "Detailed image (HD prompt)"),
             ]
             for key, label in checkbox_defs:
                 cb = QCheckBox(label)
@@ -1011,11 +1011,11 @@ class InputDialog:
 
             # Голос диктора
             self._voice_combo = self._create_voice_combo()
-            opts_form.addRow("Голос диктора:", self._voice_combo)
+            opts_form.addRow("Voice:", self._voice_combo)
 
             # Размер изображения
             self._image_size_combo = self._create_image_size_combo()
-            opts_form.addRow("Размер изображения:", self._image_size_combo)
+            opts_form.addRow("Image size:", self._image_size_combo)
 
             opts_group.setLayout(opts_form)
             layout.addWidget(opts_group)
@@ -1023,7 +1023,7 @@ class InputDialog:
         elif mode == GenerationMode.MATERIAL:
             from aqt.qt import QSpinBox
 
-            opts_group = QGroupBox("Опции генерации")
+            opts_group = QGroupBox("Generation options")
             opts_form = QFormLayout()
             opts_form.setSpacing(8)
             opts_form.setContentsMargins(8, 6, 8, 8)
@@ -1035,20 +1035,20 @@ class InputDialog:
             self._max_cards_spin.setMaximum(5)
             self._max_cards_spin.setValue(1)
             self._max_cards_spin.valueChanged.connect(lambda _: self._update_cost_estimate())
-            opts_form.addRow("Макс. карточек на абзац:", self._max_cards_spin)
+            opts_form.addRow("Max cards per paragraph:", self._max_cards_spin)
 
             self._answer_detail_combo = QComboBox()
-            self._answer_detail_combo.addItem("Короткий (1-2 предложения)", AnswerDetail.SHORT.value)
-            self._answer_detail_combo.addItem("Средний (2-4 предложения)", AnswerDetail.MEDIUM.value)
-            self._answer_detail_combo.addItem("Развёрнутый (подробно)", AnswerDetail.DETAILED.value)
-            opts_form.addRow("Детальность ответа:", self._answer_detail_combo)
+            self._answer_detail_combo.addItem("Short (1-2 sentences)", AnswerDetail.SHORT.value)
+            self._answer_detail_combo.addItem("Medium (2-4 sentences)", AnswerDetail.MEDIUM.value)
+            self._answer_detail_combo.addItem("Detailed (comprehensive)", AnswerDetail.DETAILED.value)
+            opts_form.addRow("Answer detail:", self._answer_detail_combo)
 
             # Чекбокс картинок
             opts_form.addRow(self._images_checkbox)
 
             self._image_size_combo = self._create_image_size_combo()
             self._image_size_combo.setVisible(False)
-            self._image_size_label = QLabel("Размер изображения:")
+            self._image_size_label = QLabel("Image size:")
             self._image_size_label.setVisible(False)
             opts_form.addRow(self._image_size_label, self._image_size_combo)
 
@@ -1064,7 +1064,7 @@ class InputDialog:
             layout.addWidget(opts_group)
 
         elif mode == GenerationMode.IMAGE:
-            opts_group = QGroupBox("Опции генерации")
+            opts_group = QGroupBox("Generation options")
             opts_form = QFormLayout()
             opts_form.setSpacing(8)
             opts_form.setContentsMargins(8, 6, 8, 8)
@@ -1072,13 +1072,13 @@ class InputDialog:
             opts_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
             self._image_size_combo = self._create_image_size_combo()
-            opts_form.addRow("Размер изображения:", self._image_size_combo)
+            opts_form.addRow("Image size:", self._image_size_combo)
 
             opts_group.setLayout(opts_form)
             layout.addWidget(opts_group)
 
         elif mode == GenerationMode.AUDIO:
-            opts_group = QGroupBox("Опции генерации")
+            opts_group = QGroupBox("Generation options")
             opts_form = QFormLayout()
             opts_form.setSpacing(8)
             opts_form.setContentsMargins(8, 6, 8, 8)
@@ -1086,14 +1086,14 @@ class InputDialog:
             opts_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
             self._voice_combo = self._create_voice_combo()
-            opts_form.addRow("Голос диктора:", self._voice_combo)
+            opts_form.addRow("Voice:", self._voice_combo)
 
             opts_group.setLayout(opts_form)
             layout.addWidget(opts_group)
 
         # === Секция 3: Custom prompt (только для language) ===
         if _should_show_custom_prompt(mode):
-            prompt_group = QGroupBox("Кастомный промпт")
+            prompt_group = QGroupBox("Custom prompt")
             prompt_group.setCheckable(True)
             prompt_group.setChecked(False)
             prompt_vlayout = QVBoxLayout()
@@ -1130,19 +1130,19 @@ class InputDialog:
         # --- Кнопки нижней панели ---
         buttons_layout = QHBoxLayout()
 
-        self._back_btn = QPushButton("← Назад")
+        self._back_btn = QPushButton("\u2190 Back")
         self._back_btn.clicked.connect(self._on_back)
         buttons_layout.addWidget(self._back_btn)
 
         buttons_layout.addStretch()
 
-        self._again_btn = QPushButton("Ещё раз")
+        self._again_btn = QPushButton("Again")
         self._again_btn.setObjectName("againBtn")
         self._again_btn.clicked.connect(self._on_generate_again)
         self._again_btn.setVisible(False)
         buttons_layout.addWidget(self._again_btn)
 
-        self._generate_btn = QPushButton("Сгенерировать")
+        self._generate_btn = QPushButton("Generate")
         self._generate_btn.setObjectName("generateBtn")
         self._generate_btn.setDefault(True)
         self._generate_btn.clicked.connect(self._on_generate)
@@ -1187,17 +1187,17 @@ class InputDialog:
         from aqt.qt import QComboBox
 
         combo = QComboBox()
-        combo.addItem("Alloy (нейтральный)", "alloy")
-        combo.addItem("Ash (мужской, тёплый)", "ash")
-        combo.addItem("Ballad (мужской, мягкий)", "ballad")
-        combo.addItem("Coral (женский, тёплый)", "coral")
-        combo.addItem("Echo (мужской, чёткий)", "echo")
-        combo.addItem("Fable (мужской, британский)", "fable")
-        combo.addItem("Nova (женский, энергичный)", "nova")
-        combo.addItem("Onyx (мужской, глубокий)", "onyx")
-        combo.addItem("Sage (женский, спокойный)", "sage")
-        combo.addItem("Shimmer (женский, яркий)", "shimmer")
-        combo.addItem("Verse (мужской, выразительный)", "verse")
+        combo.addItem("Alloy (neutral)", "alloy")
+        combo.addItem("Ash (male, warm)", "ash")
+        combo.addItem("Ballad (male, soft)", "ballad")
+        combo.addItem("Coral (female, warm)", "coral")
+        combo.addItem("Echo (male, clear)", "echo")
+        combo.addItem("Fable (male, British)", "fable")
+        combo.addItem("Nova (female, energetic)", "nova")
+        combo.addItem("Onyx (male, deep)", "onyx")
+        combo.addItem("Sage (female, calm)", "sage")
+        combo.addItem("Shimmer (female, bright)", "shimmer")
+        combo.addItem("Verse (male, expressive)", "verse")
         return combo
 
     def _create_image_size_combo(self) -> object:
@@ -1205,11 +1205,11 @@ class InputDialog:
         from aqt.qt import QComboBox
 
         combo = QComboBox()
-        combo.addItem("Авто (1K, по умолчанию)", "auto")
-        combo.addItem("0.5K (дешевле, для карточек достаточно)", "0.5K")
-        combo.addItem("1K (стандарт)", "1K")
-        combo.addItem("2K (высокое качество)", "2K")
-        combo.addItem("4K (максимальное)", "4K")
+        combo.addItem("Auto (1K, default)", "auto")
+        combo.addItem("0.5K (cheaper, sufficient for cards)", "0.5K")
+        combo.addItem("1K (standard)", "1K")
+        combo.addItem("2K (high quality)", "2K")
+        combo.addItem("4K (maximum)", "4K")
         combo.currentIndexChanged.connect(self._update_cost_estimate)
         return combo
 
@@ -1272,11 +1272,11 @@ class InputDialog:
         lang_opts = self._get_language_options()
         cost = _estimate_cost_from_config(config, self._mode, card_count, lang_opts)
         if cost is None:
-            self._cost_label.setText(f"{card_count} карточек (pricing не загружен — откройте настройки)")
+            self._cost_label.setText(f"{card_count} cards (pricing not loaded \u2014 open settings)")
             return
 
         cost_text = _format_cost(cost)
-        self._cost_label.setText(f"Оценка: {cost_text} ({card_count} карточек)")
+        self._cost_label.setText(f"Estimate: {cost_text} ({card_count} cards)")
 
     def _on_back(self) -> None:
         """Обработчик кнопки Назад — возврат к выбору режима."""
@@ -1297,7 +1297,7 @@ class InputDialog:
         """Состояние idle: до генерации или после сброса."""
         self._back_btn.setEnabled(True)
         self._again_btn.setVisible(False)
-        self._generate_btn.setText("Сгенерировать")
+        self._generate_btn.setText("Generate")
         self._generate_btn.setObjectName("generateBtn")
         self._generate_btn.setEnabled(True)
         self._generate_btn.setVisible(True)
@@ -1307,7 +1307,7 @@ class InputDialog:
         """Состояние generating: идёт генерация."""
         self._back_btn.setEnabled(False)
         self._again_btn.setVisible(False)
-        self._generate_btn.setText("Отменить")
+        self._generate_btn.setText("Cancel")
         self._generate_btn.setEnabled(True)
         self._reconnect_generate_btn(self._on_cancel)
 
@@ -1315,7 +1315,7 @@ class InputDialog:
         """Состояние done: генерация завершена."""
         self._back_btn.setEnabled(True)
         self._again_btn.setVisible(True)
-        self._generate_btn.setText("Закрыть")
+        self._generate_btn.setText("Close")
         self._generate_btn.setEnabled(True)
         self._reconnect_generate_btn(self._dialog.accept)
 
@@ -1413,9 +1413,9 @@ class InputDialog:
         self._last_progress = progress
         self._progress_widget.update_progress(progress)
         cost_text = _format_cost(progress.current_cost) if progress.current_cost > 0 else ""
-        parts = [f"{progress.completed_cards}/{progress.total_cards} карточек"]
+        parts = [f"{progress.completed_cards}/{progress.total_cards} cards"]
         if cost_text:
-            parts.append(f"потрачено: {cost_text}")
+            parts.append(f"spent: {cost_text}")
         self._cost_label.setText(" · ".join(parts))
         self._cost_label.setStyleSheet("color: #999999;")
 
@@ -1434,7 +1434,7 @@ class InputDialog:
         _log_cost(self._mode, len(cards), total_cost)
 
         self._progress_widget.finish()
-        self._cost_label.setText(f"Готово · {len(cards)} карточек · {_format_cost(total_cost)}")
+        self._cost_label.setText(f"Done \u00b7 {len(cards)} cards \u00b7 {_format_cost(total_cost)}")
         self._cost_label.setStyleSheet("color: #4caf50;")
         self._set_buttons_done()
         self._worker = None
@@ -1448,7 +1448,7 @@ class InputDialog:
     def _on_generation_error(self, error_msg: str) -> None:
         """Обработка ошибки генерации."""
         self._progress_widget.hide()
-        self._cost_label.setText(f"Ошибка: {error_msg}")
+        self._cost_label.setText(f"Error: {error_msg}")
         self._cost_label.setStyleSheet("color: #f44336;")
         self._set_buttons_idle()
         self._worker = None
