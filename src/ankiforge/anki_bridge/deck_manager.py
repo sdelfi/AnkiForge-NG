@@ -18,11 +18,11 @@ def _get_mw() -> AnkiQt:
     try:
         from aqt import mw  # type: ignore[import-not-found]
     except ImportError as e:
-        msg = "Anki runtime недоступен"
+        msg = "Anki runtime is not available"
         raise RuntimeError(msg) from e
 
     if mw is None:
-        msg = "Главное окно Anki не инициализировано"
+        msg = "Anki main window is not initialized"
         raise RuntimeError(msg)
 
     return mw
@@ -48,7 +48,7 @@ def create_deck(name: str) -> None:
         ValueError: Если имя пустое.
     """
     if not name.strip():
-        msg = "Имя колоды не может быть пустым"
+        msg = "Deck name cannot be empty"
         raise ValueError(msg)
 
     mw = _get_mw()
@@ -73,7 +73,7 @@ def save_media(filename: str, data: bytes) -> str:
         ValueError: Если данные пустые.
     """
     if not data:
-        msg = "Данные файла не могут быть пустыми"
+        msg = "File data cannot be empty"
         raise ValueError(msg)
 
     mw = _get_mw()
@@ -98,7 +98,7 @@ def add_note(deck_name: str, note_type: str, fields: dict[str, str]) -> None:
 
     model = mw.col.models.by_name(note_type)
     if model is None:
-        msg = f"Note type '{note_type}' не найден"
+        msg = f"Note type '{note_type}' not found"
         raise ValueError(msg)
 
     note = mw.col.new_note(model)

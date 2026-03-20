@@ -359,7 +359,7 @@ class TestGenerate:
             input_text="",
             target_deck="Test",
         )
-        with pytest.raises(ValueError, match="Не найдено текста"):
+        with pytest.raises(ValueError, match="No text found in input"):
             generator.generate(request, MagicMock())
 
     def test_whitespace_only_raises(self, generator: MaterialGenerator) -> None:
@@ -368,7 +368,7 @@ class TestGenerate:
             input_text="   \n  \n  ",
             target_deck="Test",
         )
-        with pytest.raises(ValueError, match="Не найдено текста"):
+        with pytest.raises(ValueError, match="No text found in input"):
             generator.generate(request, MagicMock())
 
 

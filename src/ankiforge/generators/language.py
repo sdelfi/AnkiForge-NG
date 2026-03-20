@@ -277,7 +277,7 @@ class LanguageGenerator:
         words = [w.strip() for w in lines[0].split(",") if w.strip()] if len(lines) == 1 and "," in lines[0] else lines
 
         if not words:
-            msg = "Не найдено слов во входном тексте"
+            msg = "No words found in input"
             raise ValueError(msg)
         return words
 

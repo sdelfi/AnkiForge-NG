@@ -108,11 +108,11 @@ class TestParseWords:
         assert result == ["apple"]
 
     def test_empty_input_raises(self, generator: LanguageGenerator) -> None:
-        with pytest.raises(ValueError, match="Не найдено слов"):
+        with pytest.raises(ValueError, match="No words found in input"):
             generator._parse_words("")
 
     def test_only_whitespace_raises(self, generator: LanguageGenerator) -> None:
-        with pytest.raises(ValueError, match="Не найдено слов"):
+        with pytest.raises(ValueError, match="No words found in input"):
             generator._parse_words("   \n  \n  ")
 
     def test_mixed_newlines_and_commas(self, generator: LanguageGenerator) -> None:
@@ -232,7 +232,7 @@ class TestGenerate:
 
     def test_empty_input_raises(self, generator: LanguageGenerator) -> None:
         request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="", target_deck="Test")
-        with pytest.raises(ValueError, match="Не найдено слов"):
+        with pytest.raises(ValueError, match="No words found in input"):
             generator.generate(request, MagicMock())
 
     def test_cost_from_api_cost(self, mock_client: MagicMock) -> None:

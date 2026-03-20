@@ -159,7 +159,7 @@ class MaterialGenerator:
         """
         text = request.input_text.strip()
         if not text:
-            msg = "Не найдено текста во входных данных"
+            msg = "No text found in input"
             raise ValueError(msg)
 
         use_images = request.include_images and self._image_model is not None

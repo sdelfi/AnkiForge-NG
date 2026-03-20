@@ -94,7 +94,7 @@ class TestCreateDeck:
     def test_empty_name_raises(self, mock_mw: MagicMock) -> None:
         with (
             patch("ankiforge.anki_bridge.deck_manager._get_mw", return_value=mock_mw),
-            pytest.raises(ValueError, match="Имя колоды не может быть пустым"),
+            pytest.raises(ValueError, match="Deck name cannot be empty"),
         ):
             create_deck("")
 
@@ -130,7 +130,7 @@ class TestSaveMedia:
     def test_empty_data_raises(self, mock_mw: MagicMock) -> None:
         with (
             patch("ankiforge.anki_bridge.deck_manager._get_mw", return_value=mock_mw),
-            pytest.raises(ValueError, match="Данные файла не могут быть пустыми"),
+            pytest.raises(ValueError, match="File data cannot be empty"),
         ):
             save_media("file.mp3", b"")
 
@@ -157,7 +157,7 @@ class TestAddNote:
 
         with (
             patch("ankiforge.anki_bridge.deck_manager._get_mw", return_value=mock_mw),
-            pytest.raises(ValueError, match="Note type .* не найден"),
+            pytest.raises(ValueError, match="Note type .* not found"),
         ):
             add_note("Default", "NonExistent", {"Q": "A"})
 
