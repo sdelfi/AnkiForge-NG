@@ -16,6 +16,24 @@ class GenerationMode(Enum):
     QUESTIONS = "questions"
 
 
+class AnswerDetail(Enum):
+    """Уровень детальности ответа."""
+
+    SHORT = "short"
+    MEDIUM = "medium"
+    DETAILED = "detailed"
+
+
+@dataclass
+class MaterialOptions:
+    """Опции генерации карточек из материала."""
+
+    max_cards_per_paragraph: int = 3
+    include_images: bool = False
+    image_size: str = "auto"
+    answer_detail: AnswerDetail = AnswerDetail.SHORT
+
+
 @dataclass
 class CardRequest:
     """Запрос на генерацию карточек."""
@@ -27,6 +45,24 @@ class CardRequest:
     include_images: bool = False
     custom_prompt: str | None = None
     language: str = "en"
+    language_options: LanguageOptions | None = None
+    material_options: MaterialOptions | None = None
+    voice: str = "alloy"
+    image_size: str = "auto"
+
+
+@dataclass
+class LanguageOptions:
+    """Опции генерации языковых карточек."""
+
+    include_photo: bool = True
+    include_audio_word: bool = True
+    include_audio_definition: bool = True
+    include_audio_example: bool = True
+    include_transcription: bool = True
+    image_size: str = "auto"
+    detailed_image: bool = False
+    voice: str = "alloy"
 
 
 @dataclass
@@ -40,6 +76,10 @@ class GeneratedCard:
     answer: str | None = None
     audio_data: bytes | None = None
     image_data: bytes | None = None
+    audio_definition: bytes | None = None
+    audio_example: bytes | None = None
+    audio_silence: bytes | None = None
+    transcription: str | None = None
 
 
 @dataclass
@@ -54,6 +94,16 @@ class GenerationProgress:
 
 
 @dataclass
+class ModelPricingCache:
+    """Кэш pricing для одной модели."""
+
+    prompt: float = 0.0
+    completion: float = 0.0
+    image: float = 0.0
+    request: float = 0.0
+
+
+@dataclass
 class AddonConfig:
     """Конфигурация add-on."""
 
@@ -62,3 +112,7 @@ class AddonConfig:
     image_model: str = ""
     audio_model: str = ""
     language: str = "en"
+    text_model_pricing: ModelPricingCache | None = None
+    image_model_pricing: ModelPricingCache | None = None
+    audio_model_pricing: ModelPricingCache | None = None
+    cached_balance: float | None = None

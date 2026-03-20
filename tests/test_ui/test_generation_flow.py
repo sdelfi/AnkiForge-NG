@@ -210,7 +210,7 @@ class TestSaveCardsToDeck:
     def _make_qa_card(self, word: str = "Q1", answer: str = "A1") -> GeneratedCard:
         return GeneratedCard(word=word, answer=answer, note_type="AnkiForge QA")
 
-    def _make_language_card(self) -> GeneratedCard:
+    def _make_language_card(self, *, with_extras: bool = False) -> GeneratedCard:
         return GeneratedCard(
             word="hello",
             note_type="AnkiForge Language",
@@ -218,6 +218,10 @@ class TestSaveCardsToDeck:
             example="Hello, world!",
             audio_data=b"audio-bytes",
             image_data=b"image-bytes",
+            audio_definition=b"audio-def-bytes" if with_extras else None,
+            audio_example=b"audio-ex-bytes" if with_extras else None,
+            audio_silence=b"silence-bytes" if with_extras else None,
+            transcription="/həˈloʊ/" if with_extras else None,
         )
 
     def _make_qa_image_card(self) -> GeneratedCard:
@@ -283,6 +287,42 @@ class TestSaveCardsToDeck:
         assert "<img src=" in fields["Image"]
 
     @patch("ankiforge.ui.generate_dialog.add_note")
+    @patch("ankiforge.ui.generate_dialog.save_media", return_value="uuid_hello.mp3")
+    @patch("ankiforge.ui.generate_dialog.create_deck")
+    def test_saves_language_card_with_all_audio(
+        self, mock_create: MagicMock, mock_media: MagicMock, mock_add: MagicMock
+    ) -> None:
+        from ankiforge.ui.generate_dialog import _save_cards_to_deck
+
+        card = self._make_language_card(with_extras=True)
+        _save_cards_to_deck([card], "Lang Deck", create_new=False)
+
+        # 5 save_media: audio + image + audio_def + silence + audio_ex
+        assert mock_media.call_count == 5
+        fields = mock_add.call_args[0][2]
+        assert fields["Transcription"] == "/həˈloʊ/"
+        assert "[sound:" in fields["AudioDefinition"]
+        assert "[sound:" in fields["AudioSilence"]
+        assert "[sound:" in fields["AudioExample"]
+
+    @patch("ankiforge.ui.generate_dialog.add_note")
+    @patch("ankiforge.ui.generate_dialog.save_media", return_value="uuid_hello.mp3")
+    @patch("ankiforge.ui.generate_dialog.create_deck")
+    def test_language_card_without_extras_has_empty_fields(
+        self, mock_create: MagicMock, mock_media: MagicMock, mock_add: MagicMock
+    ) -> None:
+        from ankiforge.ui.generate_dialog import _save_cards_to_deck
+
+        card = self._make_language_card(with_extras=False)
+        _save_cards_to_deck([card], "Lang Deck", create_new=False)
+
+        fields = mock_add.call_args[0][2]
+        assert fields["AudioDefinition"] == ""
+        assert fields["AudioSilence"] == ""
+        assert fields["AudioExample"] == ""
+        assert fields["Transcription"] == ""
+
+    @patch("ankiforge.ui.generate_dialog.add_note")
     @patch("ankiforge.ui.generate_dialog.save_media", return_value="uuid_q1.png")
     @patch("ankiforge.ui.generate_dialog.create_deck")
     def test_saves_qa_image_card(self, mock_create: MagicMock, mock_media: MagicMock, mock_add: MagicMock) -> None:
@@ -343,6 +383,41 @@ class TestSaveCardsToDeck:
 # ---------------------------------------------------------------------------
 
 
+class TestGetDeckNameFromCombo:
+    """Проверяет определение имени колоды из editable combo."""
+
+    def test_existing_deck_returns_not_new(self) -> None:
+        from ankiforge.ui.generate_dialog import _get_deck_name_from_combo
+
+        existing = {"Default", "English", "Math"}
+        name, is_new = _get_deck_name_from_combo("English", existing)
+        assert name == "English"
+        assert is_new is False
+
+    def test_new_deck_returns_is_new(self) -> None:
+        from ankiforge.ui.generate_dialog import _get_deck_name_from_combo
+
+        existing = {"Default", "English"}
+        name, is_new = _get_deck_name_from_combo("My New Deck", existing)
+        assert name == "My New Deck"
+        assert is_new is True
+
+    def test_empty_input_returns_empty(self) -> None:
+        from ankiforge.ui.generate_dialog import _get_deck_name_from_combo
+
+        name, is_new = _get_deck_name_from_combo("   ", set())
+        assert name == ""
+        assert is_new is True
+
+    def test_strips_whitespace(self) -> None:
+        from ankiforge.ui.generate_dialog import _get_deck_name_from_combo
+
+        existing = {"English"}
+        name, is_new = _get_deck_name_from_combo("  English  ", existing)
+        assert name == "English"
+        assert is_new is False
+
+
 class TestGetInputPlaceholder:
     """Проверяет подсказки для поля ввода."""
 
@@ -395,17 +470,11 @@ class TestShouldShowImagesCheckbox:
 class TestShouldShowCustomPrompt:
     """Проверяет когда показывать поле кастомного промпта."""
 
-    def test_language_mode_shows_custom_prompt(self) -> None:
-        from ankiforge.ui.generate_dialog import _should_show_custom_prompt
-
-        assert _should_show_custom_prompt(GenerationMode.LANGUAGE) is True
-
-    def test_other_modes_hide_custom_prompt(self) -> None:
+    def test_all_modes_show_custom_prompt(self) -> None:
         from ankiforge.ui.generate_dialog import _should_show_custom_prompt
 
         for mode in GenerationMode:
-            if mode != GenerationMode.LANGUAGE:
-                assert _should_show_custom_prompt(mode) is False, f"{mode} should not show custom prompt"
+            assert _should_show_custom_prompt(mode) is True, f"{mode} should show custom prompt"
 
 
 # ---------------------------------------------------------------------------
@@ -414,21 +483,41 @@ class TestShouldShowCustomPrompt:
 
 
 class TestGetDefaultCustomPrompt:
-    """Проверяет дефолтный промпт для language режима."""
+    """Проверяет дефолтный промпт для всех режимов."""
 
-    def test_returns_non_empty_string(self) -> None:
+    def test_returns_non_empty_string_for_language(self) -> None:
         from ankiforge.ui.generate_dialog import _get_default_custom_prompt
 
-        prompt = _get_default_custom_prompt()
+        prompt = _get_default_custom_prompt(GenerationMode.LANGUAGE)
         assert isinstance(prompt, str)
         assert len(prompt) > 0
 
-    def test_contains_definition_and_example(self) -> None:
+    def test_contains_definition_and_example_for_language(self) -> None:
         from ankiforge.ui.generate_dialog import _get_default_custom_prompt
 
-        prompt = _get_default_custom_prompt()
-        assert "DEFINITION" in prompt
-        assert "EXAMPLE" in prompt
+        prompt = _get_default_custom_prompt(GenerationMode.LANGUAGE)
+        assert "definition" in prompt.lower()
+        assert "example" in prompt.lower()
+
+    def test_all_modes_return_non_empty(self) -> None:
+        from ankiforge.ui.generate_dialog import _get_default_custom_prompt
+
+        for mode in GenerationMode:
+            prompt = _get_default_custom_prompt(mode)
+            assert isinstance(prompt, str)
+            assert len(prompt) > 0, f"{mode} should have a non-empty default prompt"
+
+    def test_questions_prompt_mentions_concise(self) -> None:
+        from ankiforge.ui.generate_dialog import _get_default_custom_prompt
+
+        prompt = _get_default_custom_prompt(GenerationMode.QUESTIONS)
+        assert "concise" in prompt.lower()
+
+    def test_material_prompt_mentions_question(self) -> None:
+        from ankiforge.ui.generate_dialog import _get_default_custom_prompt
+
+        prompt = _get_default_custom_prompt(GenerationMode.MATERIAL)
+        assert "question" in prompt.lower() or "QUESTION" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -480,6 +569,61 @@ class TestBuildCardRequestCustomPrompt:
         )
         assert req.custom_prompt is None
 
+
+# ---------------------------------------------------------------------------
+# Тесты _estimate_cost_from_config
+# ---------------------------------------------------------------------------
+
+
+class TestEstimateCostFromConfig:
+    """Проверяет расчёт стоимости из кэшированного pricing."""
+
+    def _make_config(self) -> object:
+        from ankiforge.models import AddonConfig, ModelPricingCache
+
+        return AddonConfig(
+            api_key="sk-or-test",
+            text_model="openai/gpt-4o",
+            text_model_pricing=ModelPricingCache(prompt=0.000005, completion=0.000015),
+            image_model="openai/dall-e-3",
+            image_model_pricing=ModelPricingCache(image=0.04),
+            audio_model="openai/tts-1",
+            audio_model_pricing=ModelPricingCache(prompt=0.000015),
+        )
+
+    def test_questions_mode_text_only(self) -> None:
+        from ankiforge.ui.generate_dialog import _estimate_cost_from_config
+
+        config = self._make_config()
+        cost = _estimate_cost_from_config(config, GenerationMode.QUESTIONS, 10)
+        assert cost is not None
+        assert cost > 0.0
+
+    def test_language_mode_all_three(self) -> None:
+        from ankiforge.ui.generate_dialog import _estimate_cost_from_config
+
+        config = self._make_config()
+        cost = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5)
+        assert cost is not None
+        cost_questions = _estimate_cost_from_config(config, GenerationMode.QUESTIONS, 5)
+        assert cost is not None and cost_questions is not None
+        assert cost > cost_questions
+
+    def test_no_pricing_returns_none(self) -> None:
+        from ankiforge.models import AddonConfig
+        from ankiforge.ui.generate_dialog import _estimate_cost_from_config
+
+        config = AddonConfig(api_key="sk-or-test", text_model="m1")
+        cost = _estimate_cost_from_config(config, GenerationMode.QUESTIONS, 10)
+        assert cost is None
+
+    def test_zero_cards_returns_zero(self) -> None:
+        from ankiforge.ui.generate_dialog import _estimate_cost_from_config
+
+        config = self._make_config()
+        cost = _estimate_cost_from_config(config, GenerationMode.QUESTIONS, 0)
+        assert cost == 0.0
+
     def test_whitespace_stripped_from_custom_prompt(self) -> None:
         from ankiforge.ui.generate_dialog import _build_card_request
 
@@ -493,3 +637,339 @@ class TestBuildCardRequestCustomPrompt:
             custom_prompt="  My prompt  ",
         )
         assert req.custom_prompt == "My prompt"
+
+    def test_language_options_no_audio_reduces_cost(self) -> None:
+        """Отключение всех аудио должно снизить стоимость."""
+        from ankiforge.models import LanguageOptions
+        from ankiforge.ui.generate_dialog import _estimate_cost_from_config
+
+        config = self._make_config()
+        cost_all = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5)
+        cost_no_audio = _estimate_cost_from_config(
+            config,
+            GenerationMode.LANGUAGE,
+            5,
+            LanguageOptions(include_audio_word=False, include_audio_definition=False, include_audio_example=False),
+        )
+        assert cost_all is not None and cost_no_audio is not None
+        assert cost_no_audio < cost_all
+
+    def test_language_options_no_photo_reduces_cost(self) -> None:
+        """Отключение фото должно снизить стоимость."""
+        from ankiforge.models import LanguageOptions
+        from ankiforge.ui.generate_dialog import _estimate_cost_from_config
+
+        config = self._make_config()
+        cost_all = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5)
+        cost_no_photo = _estimate_cost_from_config(
+            config, GenerationMode.LANGUAGE, 5, LanguageOptions(include_photo=False)
+        )
+        assert cost_all is not None and cost_no_photo is not None
+        assert cost_no_photo < cost_all
+
+    def test_language_single_text_call_same_cost_with_or_without_ipa(self) -> None:
+        """Транскрипция включена в единый JSON-запрос — стоимость text одинакова."""
+        from ankiforge.models import LanguageOptions
+        from ankiforge.ui.generate_dialog import _estimate_cost_from_config
+
+        config = self._make_config()
+        cost_all = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5)
+        cost_no_ipa = _estimate_cost_from_config(
+            config, GenerationMode.LANGUAGE, 5, LanguageOptions(include_transcription=False)
+        )
+        assert cost_all is not None and cost_no_ipa is not None
+        # Text cost одинаков — IPA в том же запросе
+        # Разница может быть только если другие опции разные
+        assert cost_all == cost_no_ipa
+
+    def test_image_size_affects_cost_estimate(self) -> None:
+        """Размер изображения влияет на оценку стоимости."""
+        from ankiforge.models import LanguageOptions
+        from ankiforge.ui.generate_dialog import _estimate_cost_from_config
+
+        config = self._make_config()
+        cost_05k = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5, LanguageOptions(image_size="0.5K"))
+        cost_1k = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5, LanguageOptions(image_size="1K"))
+        cost_4k = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5, LanguageOptions(image_size="4K"))
+        assert cost_05k is not None and cost_1k is not None and cost_4k is not None
+        assert cost_05k < cost_1k < cost_4k
+
+
+# ---------------------------------------------------------------------------
+# Тесты _build_card_request с language_options
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCardRequestLanguageOptions:
+    """Проверяет передачу language_options через _build_card_request."""
+
+    def test_language_options_passed_to_request(self) -> None:
+        from ankiforge.models import LanguageOptions
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        opts = LanguageOptions(include_photo=False, include_audio_word=False)
+        req = _build_card_request(
+            mode=GenerationMode.LANGUAGE,
+            input_text="hello",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+            language_options=opts,
+        )
+        assert req.language_options is not None
+        assert req.language_options.include_photo is False
+        assert req.language_options.include_audio_word is False
+
+    def test_none_language_options_by_default(self) -> None:
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        req = _build_card_request(
+            mode=GenerationMode.QUESTIONS,
+            input_text="Q?",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+        )
+        assert req.language_options is None
+
+
+# ---------------------------------------------------------------------------
+# Тесты _build_card_request с material_options, voice, image_size
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCardRequestNewOptions:
+    """Проверяет передачу material_options, voice, image_size через _build_card_request."""
+
+    def test_material_options_passed(self) -> None:
+        from ankiforge.models import MaterialOptions
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        opts = MaterialOptions(max_cards_per_paragraph=5, include_images=True, image_size="2K")
+        req = _build_card_request(
+            mode=GenerationMode.MATERIAL,
+            input_text="text",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=True,
+            language="en",
+            material_options=opts,
+        )
+        assert req.material_options is not None
+        assert req.material_options.max_cards_per_paragraph == 5
+        assert req.material_options.image_size == "2K"
+
+    def test_voice_passed(self) -> None:
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        req = _build_card_request(
+            mode=GenerationMode.AUDIO,
+            input_text="Q?",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+            voice="nova",
+        )
+        assert req.voice == "nova"
+
+    def test_image_size_passed(self) -> None:
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        req = _build_card_request(
+            mode=GenerationMode.IMAGE,
+            input_text="Q?",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+            image_size="4K",
+        )
+        assert req.image_size == "4K"
+
+    def test_defaults(self) -> None:
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        req = _build_card_request(
+            mode=GenerationMode.QUESTIONS,
+            input_text="Q?",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+        )
+        assert req.material_options is None
+        assert req.voice == "alloy"
+        assert req.image_size == "auto"
+
+
+# ---------------------------------------------------------------------------
+# Тесты _create_generator с новыми параметрами
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCardRequestAnswerDetail:
+    """Проверяет передачу answer_detail через material_options."""
+
+    def test_answer_detail_passed_in_material_options(self) -> None:
+        from ankiforge.models import AnswerDetail, MaterialOptions
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        opts = MaterialOptions(answer_detail=AnswerDetail.DETAILED)
+        req = _build_card_request(
+            mode=GenerationMode.MATERIAL,
+            input_text="text",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+            material_options=opts,
+        )
+        assert req.material_options is not None
+        assert req.material_options.answer_detail == AnswerDetail.DETAILED
+
+    def test_default_answer_detail_is_short(self) -> None:
+        from ankiforge.models import AnswerDetail, MaterialOptions
+        from ankiforge.ui.generate_dialog import _build_card_request
+
+        opts = MaterialOptions()
+        req = _build_card_request(
+            mode=GenerationMode.MATERIAL,
+            input_text="text",
+            deck_name="Deck",
+            create_new_deck=False,
+            include_images=False,
+            language="en",
+            material_options=opts,
+        )
+        assert req.material_options is not None
+        assert req.material_options.answer_detail == AnswerDetail.SHORT
+
+
+class TestCreateGeneratorNewParams:
+    """Проверяет передачу image_size и voice в генераторы."""
+
+    def _make_client(self) -> MagicMock:
+        return MagicMock()
+
+    def test_image_generator_gets_image_size(self) -> None:
+        from ankiforge.ui.generate_dialog import _create_generator
+
+        gen = _create_generator(
+            mode=GenerationMode.IMAGE,
+            client=self._make_client(),
+            text_model="m1",
+            image_model="m2",
+            audio_model="m3",
+            image_size="2K",
+        )
+        assert gen._image_size == "2K"
+
+    def test_audio_generator_gets_voice(self) -> None:
+        from ankiforge.ui.generate_dialog import _create_generator
+
+        gen = _create_generator(
+            mode=GenerationMode.AUDIO,
+            client=self._make_client(),
+            text_model="m1",
+            image_model="m2",
+            audio_model="m3",
+            voice="nova",
+        )
+        assert gen._voice == "nova"
+
+    def test_material_generator_gets_image_size(self) -> None:
+        from ankiforge.ui.generate_dialog import _create_generator
+
+        gen = _create_generator(
+            mode=GenerationMode.MATERIAL,
+            client=self._make_client(),
+            text_model="m1",
+            image_model="m2",
+            audio_model="m3",
+            include_images=True,
+            image_size="0.5K",
+        )
+        assert gen._image_size == "0.5K"
+
+
+# ---------------------------------------------------------------------------
+# Тесты _markdown_to_html
+# ---------------------------------------------------------------------------
+
+
+class TestMarkdownToHtml:
+    """Конвертация markdown code blocks в HTML для Anki."""
+
+    def test_code_block_to_pre(self) -> None:
+        from ankiforge.ui.generate_dialog import _markdown_to_html
+
+        text = "Пример:\n```python\nx = 1\n```\nКонец."
+        result = _markdown_to_html(text)
+        assert "<pre><code" in result
+        assert "x = 1" in result
+        assert "```" not in result
+
+    def test_code_block_preserves_language(self) -> None:
+        from ankiforge.ui.generate_dialog import _markdown_to_html
+
+        text = "```python\nprint('hello')\n```"
+        result = _markdown_to_html(text)
+        assert 'class="language-python"' in result
+
+    def test_code_block_without_language(self) -> None:
+        from ankiforge.ui.generate_dialog import _markdown_to_html
+
+        text = "```\nx = 1\n```"
+        result = _markdown_to_html(text)
+        assert "<pre><code>" in result
+
+    def test_inline_code(self) -> None:
+        from ankiforge.ui.generate_dialog import _markdown_to_html
+
+        text = "Используйте `OrderedDict.fromkeys()` для этого."
+        result = _markdown_to_html(text)
+        assert "<code>OrderedDict.fromkeys()</code>" in result
+        assert "`" not in result
+
+    def test_html_escaping_in_code(self) -> None:
+        from ankiforge.ui.generate_dialog import _markdown_to_html
+
+        text = "```python\nif x < 10 and y > 5:\n```"
+        result = _markdown_to_html(text)
+        assert "&lt;" in result
+        assert "&gt;" in result
+        assert "<10" not in result  # не должно стать HTML тегом
+
+    def test_newlines_to_br_outside_code(self) -> None:
+        from ankiforge.ui.generate_dialog import _markdown_to_html
+
+        text = "Строка 1\nСтрока 2"
+        result = _markdown_to_html(text)
+        assert "<br>" in result
+
+    def test_newlines_preserved_inside_pre(self) -> None:
+        from ankiforge.ui.generate_dialog import _markdown_to_html
+
+        text = "```python\nline1\nline2\n```"
+        result = _markdown_to_html(text)
+        # Внутри <pre> не должно быть <br>
+        assert "<br>" not in result
+
+    def test_plain_text_no_code(self) -> None:
+        from ankiforge.ui.generate_dialog import _markdown_to_html
+
+        text = "Обычный текст без кода."
+        result = _markdown_to_html(text)
+        assert result == "Обычный текст без кода."
+
+    def test_multiple_code_blocks(self) -> None:
+        from ankiforge.ui.generate_dialog import _markdown_to_html
+
+        text = "A:\n```python\nx = 1\n```\nB:\n```js\ny = 2\n```"
+        result = _markdown_to_html(text)
+        assert result.count("<pre>") == 2
+        assert "language-python" in result
+        assert "language-js" in result

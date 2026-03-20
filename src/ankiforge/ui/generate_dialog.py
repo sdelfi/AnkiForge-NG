@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import TYPE_CHECKING
 
 from ankiforge.anki_bridge.deck_manager import add_note, create_deck, save_media
@@ -11,13 +12,20 @@ from ankiforge.anki_bridge.note_types import (
     QA_IMAGE_NOTE_TYPE_NAME,
 )
 from ankiforge.config.manager import get_config, is_configured
-from ankiforge.models import CardRequest, GeneratedCard, GenerationMode, GenerationProgress
+from ankiforge.models import (
+    AddonConfig,
+    AnswerDetail,
+    CardRequest,
+    GeneratedCard,
+    GenerationMode,
+    GenerationProgress,
+    MaterialOptions,
+)
 from ankiforge.ui.progress_widget import (
     GenerationWorker,
     ProgressWidget,
     _count_input_items,
-    _estimate_and_format_cost,
-    _format_summary,
+    _format_cost,
 )
 
 if TYPE_CHECKING:
@@ -26,6 +34,7 @@ if TYPE_CHECKING:
 
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
 
+    from ankiforge.models import LanguageOptions
     from ankiforge.openrouter.client import OpenRouterClient
 
     class _CardGenerator(Protocol):
@@ -129,20 +138,192 @@ def _should_show_custom_prompt(mode: GenerationMode) -> bool:
         mode: Режим генерации.
 
     Returns:
-        True только для режима LANGUAGE.
+        True для всех режимов.
     """
-    return mode == GenerationMode.LANGUAGE
+    return True
 
 
-def _get_default_custom_prompt() -> str:
-    """Возвращает дефолтный промпт для языковых карточек.
+def _get_deck_name_from_combo(typed_text: str, existing_decks: set[str]) -> tuple[str, bool]:
+    """Определяет имя колоды и нужно ли создавать новую.
+
+    Args:
+        typed_text: Текст из editable combo.
+        existing_decks: Набор существующих колод.
+
+    Returns:
+        (deck_name, is_new) — имя колоды и флаг создания новой.
+    """
+    name = typed_text.strip()
+    if not name:
+        return "", True
+    return name, name not in existing_decks
+
+
+def _estimate_cost_from_config(
+    config: AddonConfig,
+    mode: GenerationMode,
+    card_count: int,
+    language_options: LanguageOptions | None = None,
+    *,
+    material_options: MaterialOptions | None = None,
+    image_size: str = "auto",
+) -> float | None:
+    """Расчёт стоимости из кэшированного pricing в конфиге.
+
+    Args:
+        config: Конфигурация с pricing моделей.
+        mode: Режим генерации.
+        card_count: Количество карточек.
+        language_options: Опции генерации для language режима.
+
+    Returns:
+        Стоимость в долларах или None если pricing не загружен.
+    """
+    if card_count <= 0:
+        return 0.0
+
+    # Средние значения токенов/символов на вызов
+    avg_prompt_tokens = 200
+    avg_completion_tokens = 150
+    avg_audio_chars = 100
+
+    # Средняя стоимость генерации одного изображения по размеру (USD).
+    # OpenRouter API не отдаёт image output pricing (/models не содержит image_output),
+    # поэтому используем эмпирические средние на основе реальных запросов.
+    # Примеры: Gemini 2.5 Flash Image 0.5K=$0.02, 1K=$0.04; Gemini 3.1 Flash 1K=$0.07
+    _avg_image_cost_by_size: dict[str, float] = {
+        "0.5K": 0.02,
+        "1K": 0.04,
+        "2K": 0.10,
+        "4K": 0.25,
+        "auto": 0.04,
+    }
+
+    tp = config.text_model_pricing
+    ip = config.image_model_pricing
+    ap = config.audio_model_pricing
+
+    # Если нет pricing — не можем посчитать
+    mode_val = mode.value
+    if tp is None and mode_val in ("questions", "language", "material", "image", "audio"):
+        return None
+
+    cost = 0.0
+
+    if tp is not None and mode_val in ("questions", "language", "material", "image", "audio"):
+        text_multiplier = 2 if mode_val == "material" else 1  # map-reduce: 2 вызова на абзац
+        cost += (tp.prompt * avg_prompt_tokens + tp.completion * avg_completion_tokens) * card_count * text_multiplier
+
+    if ip is not None and mode_val in ("language", "image", "material"):
+        include_img = True
+        img_size = image_size
+        if mode_val == "language" and language_options:
+            include_img = language_options.include_photo
+            img_size = language_options.image_size
+        elif mode_val == "material":
+            include_img = material_options.include_images if material_options else False
+            img_size = material_options.image_size if material_options else image_size
+        if include_img:
+            cost += _avg_image_cost_by_size.get(img_size, 0.04) * card_count
+
+    if ap is not None and mode_val in ("language", "audio"):
+        if mode_val == "language":
+            if language_options:
+                audio_count = sum(
+                    [
+                        language_options.include_audio_word,
+                        language_options.include_audio_definition,
+                        language_options.include_audio_example,
+                    ]
+                )
+            else:
+                audio_count = 3
+            cost += ap.prompt * avg_audio_chars * card_count * audio_count
+        else:
+            cost += ap.prompt * avg_audio_chars * card_count
+
+    return cost
+
+
+def _log_cost(mode: GenerationMode, card_count: int, cost: float) -> None:
+    """Записывает расход в лог-файл.
+
+    Args:
+        mode: Режим генерации.
+        card_count: Количество карточек.
+        cost: Стоимость в долларах.
+    """
+    import json
+    from datetime import datetime
+    from pathlib import Path
+
+    try:
+        from aqt import mw  # type: ignore[import-not-found]
+
+        if mw is None or mw.addonManager is None:
+            return
+        addon_dir = Path(mw.addonManager.addonsFolder("ankiforge"))
+    except Exception:  # noqa: BLE001
+        return
+
+    log_path = addon_dir / "cost_log.json"
+    entries: list[dict[str, object]] = []
+    if log_path.exists():
+        try:
+            entries = json.loads(log_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            entries = []
+
+    entries.append(
+        {
+            "timestamp": datetime.now(tz=UTC).isoformat(),
+            "mode": mode.value,
+            "cards": card_count,
+            "cost_usd": round(cost, 6),
+        }
+    )
+
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        log_path.write_text(json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _get_default_custom_prompt(mode: GenerationMode = GenerationMode.LANGUAGE) -> str:
+    """Возвращает дефолтный промпт для указанного режима.
+
+    Args:
+        mode: Режим генерации.
 
     Returns:
         Текст промпта по умолчанию.
     """
-    from ankiforge.generators.language import _DEFAULT_SYSTEM_PROMPT
+    if mode == GenerationMode.LANGUAGE:
+        from ankiforge.generators.language import _DEFAULT_SYSTEM_PROMPT
 
-    return _DEFAULT_SYSTEM_PROMPT
+        return _DEFAULT_SYSTEM_PROMPT
+
+    if mode == GenerationMode.QUESTIONS:
+        from ankiforge.generators.questions import _SYSTEM_PROMPT
+
+        return _SYSTEM_PROMPT
+
+    if mode == GenerationMode.IMAGE:
+        from ankiforge.generators.image import _SYSTEM_PROMPT
+
+        return _SYSTEM_PROMPT
+
+    if mode == GenerationMode.AUDIO:
+        from ankiforge.generators.audio import _SYSTEM_PROMPT
+
+        return _SYSTEM_PROMPT
+
+    if mode == GenerationMode.MATERIAL:
+        from ankiforge.generators.material import _EXTRACT_PROMPT, _GENERATE_PROMPT
+
+        return f"--- Extract phase ---\n{_EXTRACT_PROMPT}\n\n--- Generate phase ---\n{_GENERATE_PROMPT}"
+
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +339,9 @@ def _create_generator(
     image_model: str,
     audio_model: str,
     include_images: bool = False,
+    config: AddonConfig | None = None,
+    image_size: str = "auto",
+    voice: str = "alloy",
 ) -> _CardGenerator:
     """Создаёт генератор карточек по режиму.
 
@@ -168,6 +352,9 @@ def _create_generator(
         image_model: ID image модели.
         audio_model: ID audio модели.
         include_images: Добавлять ли картинки (для material).
+        config: Конфигурация с pricing (для real-time cost tracking).
+        image_size: Размер изображения (для image/material).
+        voice: Голос диктора (для audio).
 
     Returns:
         Экземпляр генератора.
@@ -180,22 +367,32 @@ def _create_generator(
     if mode == GenerationMode.LANGUAGE:
         from ankiforge.generators.language import LanguageGenerator
 
-        return LanguageGenerator(client, text_model, audio_model, image_model)
+        return LanguageGenerator(
+            client,
+            text_model,
+            audio_model,
+            image_model,
+            text_pricing=config.text_model_pricing if config else None,
+            image_pricing=config.image_model_pricing if config else None,
+            audio_pricing=config.audio_model_pricing if config else None,
+        )
 
     if mode == GenerationMode.MATERIAL:
         from ankiforge.generators.material import MaterialGenerator
 
-        return MaterialGenerator(client, text_model, image_model=image_model if include_images else None)
+        return MaterialGenerator(
+            client, text_model, image_model=image_model if include_images else None, image_size=image_size
+        )
 
     if mode == GenerationMode.IMAGE:
         from ankiforge.generators.image import ImageGenerator
 
-        return ImageGenerator(client, text_model, image_model)
+        return ImageGenerator(client, text_model, image_model, image_size=image_size)
 
     if mode == GenerationMode.AUDIO:
         from ankiforge.generators.audio import AudioGenerator
 
-        return AudioGenerator(client, text_model, audio_model)
+        return AudioGenerator(client, text_model, audio_model, voice=voice)
 
     msg = f"Неизвестный режим генерации: {mode}"
     raise ValueError(msg)
@@ -215,6 +412,10 @@ def _build_card_request(
     include_images: bool,
     language: str,
     custom_prompt: str | None = None,
+    language_options: LanguageOptions | None = None,
+    material_options: MaterialOptions | None = None,
+    voice: str = "alloy",
+    image_size: str = "auto",
 ) -> CardRequest:
     """Собирает CardRequest из параметров формы.
 
@@ -225,7 +426,11 @@ def _build_card_request(
         create_new_deck: Создать новую колоду.
         include_images: Добавлять картинки (для material).
         language: Язык карточек.
-        custom_prompt: Кастомный промпт (для language режима).
+        custom_prompt: Кастомный промпт.
+        language_options: Опции генерации для language режима.
+        material_options: Опции генерации для material режима.
+        voice: Голос диктора (для audio).
+        image_size: Размер изображения (для image/material).
 
     Returns:
         CardRequest.
@@ -251,12 +456,56 @@ def _build_card_request(
         include_images=include_images,
         language=language,
         custom_prompt=cleaned_prompt,
+        language_options=language_options,
+        material_options=material_options,
+        voice=voice,
+        image_size=image_size,
     )
 
 
 # ---------------------------------------------------------------------------
 # Сохранение карточек в колоду (тестируемое без Qt)
 # ---------------------------------------------------------------------------
+
+
+def _markdown_to_html(text: str) -> str:
+    """Конвертирует markdown code blocks и inline code в HTML для Anki.
+
+    Args:
+        text: Текст с markdown-разметкой.
+
+    Returns:
+        HTML-строка с ``<pre><code>`` и ``<code>`` тегами.
+    """
+    import re as _re
+
+    if not text:
+        return text
+
+    def _escape(s: str) -> str:
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    # 1. Fenced code blocks: ```lang\n...\n```
+    def _replace_block(m: _re.Match[str]) -> str:
+        lang = m.group(1) or ""
+        code = _escape(m.group(2))
+        cls = f' class="language-{lang}"' if lang else ""
+        return f"<pre><code{cls}>{code}</code></pre>"
+
+    result = _re.sub(r"```(\w*)\n(.*?)```", _replace_block, text, flags=_re.DOTALL)
+
+    # 2. Inline code: `...`
+    def _replace_inline(m: _re.Match[str]) -> str:
+        return f"<code>{_escape(m.group(1))}</code>"
+
+    result = _re.sub(r"`([^`]+)`", _replace_inline, result)
+
+    # 3. Newlines → <br> ТОЛЬКО вне <pre>...</pre>
+    parts = _re.split(r"(<pre>.*?</pre>)", result, flags=_re.DOTALL)
+    for i, part in enumerate(parts):
+        if not part.startswith("<pre>"):
+            parts[i] = part.replace("\n", "<br>")
+    return "".join(parts)
 
 
 def _build_note_fields(card: GeneratedCard) -> dict[str, str]:
@@ -271,7 +520,7 @@ def _build_note_fields(card: GeneratedCard) -> dict[str, str]:
     if card.note_type == LANGUAGE_NOTE_TYPE_NAME:
         audio_ref = ""
         if card.audio_data:
-            media_name = save_media("audio.mp3", card.audio_data)
+            media_name = save_media("audio.wav", card.audio_data)
             audio_ref = f"[sound:{media_name}]"
 
         image_ref = ""
@@ -279,12 +528,31 @@ def _build_note_fields(card: GeneratedCard) -> dict[str, str]:
             media_name = save_media("image.png", card.image_data)
             image_ref = f'<img src="{media_name}">'
 
+        audio_def_ref = ""
+        if card.audio_definition:
+            media_name = save_media("audio_def.wav", card.audio_definition)
+            audio_def_ref = f"[sound:{media_name}]"
+
+        audio_ex_ref = ""
+        if card.audio_example:
+            media_name = save_media("audio_ex.wav", card.audio_example)
+            audio_ex_ref = f"[sound:{media_name}]"
+
+        audio_silence_ref = ""
+        if card.audio_silence:
+            media_name = save_media("silence.wav", card.audio_silence)
+            audio_silence_ref = f"[sound:{media_name}]"
+
         return {
             "Word": card.word,
             "Definition": card.definition or "",
             "Example": card.example or "",
             "Audio": audio_ref,
             "Image": image_ref,
+            "AudioDefinition": audio_def_ref,
+            "AudioSilence": audio_silence_ref,
+            "AudioExample": audio_ex_ref,
+            "Transcription": card.transcription or "",
         }
 
     if card.note_type == QA_IMAGE_NOTE_TYPE_NAME:
@@ -294,27 +562,27 @@ def _build_note_fields(card: GeneratedCard) -> dict[str, str]:
             image_ref = f'<img src="{media_name}">'
 
         return {
-            "Question": card.word,
-            "Answer": card.answer or "",
+            "Question": _markdown_to_html(card.word),
+            "Answer": _markdown_to_html(card.answer or ""),
             "Image": image_ref,
         }
 
     if card.note_type == QA_AUDIO_NOTE_TYPE_NAME:
         audio_ref = ""
         if card.audio_data:
-            media_name = save_media("audio.mp3", card.audio_data)
+            media_name = save_media("audio.wav", card.audio_data)
             audio_ref = f"[sound:{media_name}]"
 
         return {
-            "Question": card.word,
-            "Answer": card.answer or "",
+            "Question": _markdown_to_html(card.word),
+            "Answer": _markdown_to_html(card.answer or ""),
             "Audio": audio_ref,
         }
 
     # QA (default)
     return {
-        "Question": card.word,
-        "Answer": card.answer or "",
+        "Question": _markdown_to_html(card.word),
+        "Answer": _markdown_to_html(card.answer or ""),
     }
 
 
@@ -343,6 +611,105 @@ def _save_cards_to_deck(
 
 
 # ---------------------------------------------------------------------------
+# QSS — стили для диалогов (palette-friendly, dark/light)
+# ---------------------------------------------------------------------------
+
+_DIALOG_QSS = """
+QGroupBox {
+    font-weight: bold;
+    border: none;
+    margin-top: 14px;
+    padding: 8px 0 0 0;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 2px;
+    padding: 0 4px;
+}
+QPlainTextEdit {
+    border: 1px solid palette(dark);
+    border-radius: 4px;
+    padding: 6px;
+}
+QPlainTextEdit:focus {
+    border-color: palette(highlight);
+}
+QComboBox {
+    border: 1px solid palette(dark);
+    border-radius: 4px;
+    padding: 4px 8px;
+    min-height: 28px;
+}
+QComboBox:focus {
+    border-color: palette(highlight);
+}
+QComboBox QAbstractItemView {
+    selection-background-color: palette(highlight);
+    selection-color: palette(highlighted-text);
+    outline: none;
+}
+QPushButton#generateBtn {
+    background-color: palette(highlight);
+    color: palette(highlighted-text);
+    border: none;
+    border-radius: 5px;
+    padding: 8px 28px;
+    font-weight: bold;
+    font-size: 13px;
+    min-width: 130px;
+}
+QPushButton#generateBtn:disabled {
+    background-color: palette(dark);
+    color: palette(mid);
+}
+QPushButton#againBtn {
+    background-color: palette(dark);
+    color: palette(text);
+    border: 1px solid palette(mid);
+    border-radius: 5px;
+    padding: 8px 18px;
+    font-size: 13px;
+    min-width: 90px;
+}
+QPushButton#againBtn:hover {
+    background-color: palette(mid);
+}
+QPushButton#selectBtn {
+    background-color: palette(dark);
+    color: palette(text);
+    border: none;
+    border-radius: 4px;
+    padding: 6px 18px;
+    font-weight: bold;
+}
+QPushButton#selectBtn:hover {
+    background-color: palette(highlight);
+    color: palette(highlighted-text);
+}
+QProgressBar {
+    border: 1px solid palette(dark);
+    border-radius: 4px;
+    text-align: center;
+    min-height: 18px;
+}
+QProgressBar::chunk {
+    background-color: palette(highlight);
+    border-radius: 3px;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid palette(dark);
+    border-radius: 3px;
+}
+QCheckBox::indicator:checked {
+    background-color: palette(highlight);
+    border-color: palette(highlight);
+}
+"""
+
+
+# ---------------------------------------------------------------------------
 # GenerateDialog — выбор режима
 # ---------------------------------------------------------------------------
 
@@ -362,14 +729,13 @@ class GenerateDialog:
         """
         from aqt.qt import (  # type: ignore[import-not-found]
             QDialog,
-            QDialogButtonBox,
             QFont,
             QHBoxLayout,
             QLabel,
             QPushButton,
             QSizePolicy,
             QVBoxLayout,
-        )
+        )  # noqa: F811
 
         self._mw = mw
         self._selected_mode: GenerationMode | None = None
@@ -377,6 +743,7 @@ class GenerateDialog:
         self._dialog = QDialog(mw)
         self._dialog.setWindowTitle("AnkiForge — Generate Cards")
         self._dialog.setMinimumWidth(480)
+        self._dialog.setStyleSheet(_DIALOG_QSS)
 
         layout = QVBoxLayout()
         self._dialog.setLayout(layout)
@@ -412,22 +779,37 @@ class GenerateDialog:
             text_layout.addWidget(mode_title)
 
             mode_subtitle = QLabel(info["subtitle"])
-            mode_subtitle.setStyleSheet("color: gray;")
+            mode_subtitle.setStyleSheet("color: #999999;")
             text_layout.addWidget(mode_subtitle)
             btn_layout.addLayout(text_layout)
 
             # Кнопка выбора
             select_btn = QPushButton("Выбрать")
+            select_btn.setObjectName("selectBtn")
             select_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             select_btn.clicked.connect(self._make_mode_handler(mode))
             btn_layout.addWidget(select_btn)
 
             layout.addLayout(btn_layout)
 
-        # --- Cancel ---
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
-        button_box.rejected.connect(self._dialog.reject)
-        layout.addWidget(button_box)
+        layout.addStretch()
+
+        # --- Настройки / Отмена ---
+        buttons_layout = QHBoxLayout()
+        settings_btn = QPushButton("Настройки")
+        settings_btn.clicked.connect(self._on_open_settings)
+        buttons_layout.addWidget(settings_btn)
+        buttons_layout.addStretch()
+        cancel_btn = QPushButton("Отмена")
+        cancel_btn.clicked.connect(self._dialog.reject)
+        buttons_layout.addWidget(cancel_btn)
+        layout.addLayout(buttons_layout)
+
+    def _on_open_settings(self) -> None:
+        """Открывает диалог настроек."""
+        from ankiforge.config.dialog import SettingsDialog
+
+        SettingsDialog(self._mw).run()
 
     def _make_mode_handler(self, mode: GenerationMode) -> Callable[[], None]:
         """Создаёт обработчик для кнопки режима.
@@ -466,13 +848,11 @@ class GenerateDialog:
 # InputDialog — ввод данных и запуск генерации
 # ---------------------------------------------------------------------------
 
-_NEW_DECK_OPTION = "— Создать новую —"
-
 
 class InputDialog:
     """Диалог ввода данных для генерации карточек.
 
-    Показывает: текстовое поле ввода, выбор колоды, опцию создания новой колоды,
+    Показывает: текстовое поле ввода, выбор/создание колоды (editable combo),
     чекбокс картинок (для material), кнопку Generate.
     """
 
@@ -486,13 +866,16 @@ class InputDialog:
         from aqt.qt import (
             QCheckBox,
             QComboBox,
+            QCompleter,
             QDialog,
-            QDialogButtonBox,
             QFont,
             QFormLayout,
+            QGroupBox,
+            QHBoxLayout,
             QLabel,
-            QLineEdit,
             QPlainTextEdit,
+            QPushButton,
+            Qt,
             QVBoxLayout,
         )
 
@@ -503,112 +886,452 @@ class InputDialog:
         self._dialog = QDialog(mw)
         info = _get_mode_info(mode)
         self._dialog.setWindowTitle(f"AnkiForge — {info['title']}")
-        self._dialog.setMinimumWidth(550)
-        self._dialog.setMinimumHeight(400)
+        self._dialog.setMinimumWidth(520)
+        self._dialog.setStyleSheet(_DIALOG_QSS)
 
         layout = QVBoxLayout()
+        layout.setSpacing(10)
+        layout.setContentsMargins(14, 14, 14, 14)
         self._dialog.setLayout(layout)
 
         # --- Заголовок ---
-        header = QLabel(f"{info['icon']} {info['title']}")
+        header = QLabel(info["title"])
         header_font = QFont()
         header_font.setPointSize(13)
         header_font.setBold(True)
         header.setFont(header_font)
         layout.addWidget(header)
 
-        # --- Текстовое поле ввода ---
+        subtitle = QLabel(info["subtitle"])
+        subtitle.setStyleSheet("color: #999999;")
+        layout.addWidget(subtitle)
+
+        # === Секция 1: Данные для генерации ===
+        input_group = QGroupBox("Данные для генерации")
+        input_vlayout = QVBoxLayout()
+        input_vlayout.setContentsMargins(8, 6, 8, 8)
         self._input_text = QPlainTextEdit()
         self._input_text.setPlaceholderText(_get_input_placeholder(mode))
-        self._input_text.setMinimumHeight(150)
-        layout.addWidget(self._input_text)
+        self._input_text.setMinimumHeight(140)
+        input_vlayout.addWidget(self._input_text)
+        input_group.setLayout(input_vlayout)
+        layout.addWidget(input_group)
 
-        # --- Форма настроек ---
-        form = QFormLayout()
+        # === Секция 2: Настройки ===
+        settings_group = QGroupBox("Настройки")
+        settings_form = QFormLayout()
+        settings_form.setSpacing(8)
+        settings_form.setContentsMargins(8, 6, 8, 8)
 
-        # Выбор колоды
+        # Editable combo — выбор существующей или ввод новой колоды
         self._deck_combo = QComboBox()
-        self._deck_combo.addItem(_NEW_DECK_OPTION, "")
+        self._deck_combo.setEditable(True)
+        self._deck_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self._deck_combo.lineEdit().setPlaceholderText("Выберите или создайте колоду...")
+
+        deck_completer = QCompleter()
+        deck_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        deck_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        deck_completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self._deck_combo.setCompleter(deck_completer)
+
+        self._existing_decks: set[str] = set()
         try:
             from ankiforge.anki_bridge.deck_manager import get_decks
 
             for name in get_decks():
                 self._deck_combo.addItem(name, name)
-            # По умолчанию выбираем первую реальную колоду если есть
-            if self._deck_combo.count() > 1:
-                self._deck_combo.setCurrentIndex(1)
+                self._existing_decks.add(name)
         except RuntimeError:
             pass
-        self._deck_combo.currentIndexChanged.connect(self._on_deck_changed)
-        form.addRow("Колода:", self._deck_combo)
 
-        # Поле для имени новой колоды
-        self._new_deck_input = QLineEdit()
-        self._new_deck_input.setPlaceholderText("Имя новой колоды")
-        self._new_deck_input.setVisible(self._deck_combo.currentData() == "")
-        form.addRow("Новая колода:", self._new_deck_input)
+        # Не выбираем колоду автоматически — пусть пользователь вводит сам
+        self._deck_combo.setCurrentIndex(-1)
+        deck_completer.setModel(self._deck_combo.model())
+        settings_form.addRow("Колода:", self._deck_combo)
 
-        # Чекбокс картинок (только для material)
+        deck_hint = QLabel("Выберите существующую или введите новое имя для создания колоды")
+        deck_hint.setStyleSheet("color: #999999; font-size: 11px;")
+        deck_hint.setWordWrap(True)
+        settings_form.addRow("", deck_hint)
+
+        # Язык карточек
+        self._language_combo = QComboBox()
+        self._language_combo.addItem("English", "en")
+        self._language_combo.addItem("Русский", "ru")
+        self._language_combo.addItem("Deutsch", "de")
+        self._language_combo.addItem("Français", "fr")
+        self._language_combo.addItem("Español", "es")
+        self._language_combo.addItem("日本語", "ja")
+        self._language_combo.addItem("中文", "zh")
+
+        # Выставляем язык из конфига
+        config = get_config()
+        for i in range(self._language_combo.count()):
+            if self._language_combo.itemData(i) == config.language:
+                self._language_combo.setCurrentIndex(i)
+                break
+        settings_form.addRow("Язык:", self._language_combo)
+
+        # Чекбокс картинок — создаём здесь, но добавляем в «Опции генерации» для material
         self._images_checkbox = QCheckBox("Добавить картинки к карточкам")
-        self._images_checkbox.setVisible(_should_show_images_checkbox(mode))
-        form.addRow("", self._images_checkbox)
 
-        layout.addLayout(form)
+        settings_group.setLayout(settings_form)
+        layout.addWidget(settings_group)
 
-        # --- Custom prompt (только для language) ---
+        # === Секция 2.5: Опции генерации ===
+        self._lang_options_checkboxes: dict[str, QCheckBox] = {}
+        self._image_size_combo: QComboBox | None = None
+        self._voice_combo: QComboBox | None = None
+        self._max_cards_spin: object | None = None  # QSpinBox, typed as object to avoid import
+        self._answer_detail_combo: QComboBox | None = None
+
+        if mode == GenerationMode.LANGUAGE:
+            opts_group = QGroupBox("Опции генерации")
+            opts_form = QFormLayout()
+            opts_form.setSpacing(8)
+            opts_form.setContentsMargins(8, 6, 8, 8)
+            opts_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+            opts_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+            checkbox_defs = [
+                ("include_photo", "Генерировать фото"),
+                ("include_audio_word", "Аудио: произношение слова"),
+                ("include_audio_definition", "Аудио: озвучка определения"),
+                ("include_audio_example", "Аудио: озвучка примера"),
+                ("include_transcription", "Фонетическая транскрипция (IPA)"),
+                ("detailed_image", "Детальное изображение (HD промпт)"),
+            ]
+            for key, label in checkbox_defs:
+                cb = QCheckBox(label)
+                cb.setChecked(key not in ("detailed_image",))
+                cb.stateChanged.connect(self._update_cost_estimate)
+                self._lang_options_checkboxes[key] = cb
+                opts_form.addRow(cb)
+
+            # Голос диктора
+            self._voice_combo = self._create_voice_combo()
+            opts_form.addRow("Голос диктора:", self._voice_combo)
+
+            # Размер изображения
+            self._image_size_combo = self._create_image_size_combo()
+            opts_form.addRow("Размер изображения:", self._image_size_combo)
+
+            opts_group.setLayout(opts_form)
+            layout.addWidget(opts_group)
+
+        elif mode == GenerationMode.MATERIAL:
+            from aqt.qt import QSpinBox
+
+            opts_group = QGroupBox("Опции генерации")
+            opts_form = QFormLayout()
+            opts_form.setSpacing(8)
+            opts_form.setContentsMargins(8, 6, 8, 8)
+            opts_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+            opts_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+            self._max_cards_spin = QSpinBox()
+            self._max_cards_spin.setMinimum(1)
+            self._max_cards_spin.setMaximum(5)
+            self._max_cards_spin.setValue(1)
+            self._max_cards_spin.valueChanged.connect(lambda _: self._update_cost_estimate())
+            opts_form.addRow("Макс. карточек на абзац:", self._max_cards_spin)
+
+            self._answer_detail_combo = QComboBox()
+            self._answer_detail_combo.addItem("Короткий (1-2 предложения)", AnswerDetail.SHORT.value)
+            self._answer_detail_combo.addItem("Средний (2-4 предложения)", AnswerDetail.MEDIUM.value)
+            self._answer_detail_combo.addItem("Развёрнутый (подробно)", AnswerDetail.DETAILED.value)
+            opts_form.addRow("Детальность ответа:", self._answer_detail_combo)
+
+            # Чекбокс картинок
+            opts_form.addRow(self._images_checkbox)
+
+            self._image_size_combo = self._create_image_size_combo()
+            self._image_size_combo.setVisible(False)
+            self._image_size_label = QLabel("Размер изображения:")
+            self._image_size_label.setVisible(False)
+            opts_form.addRow(self._image_size_label, self._image_size_combo)
+
+            # Показывать image_size + label когда включены картинки
+            def _toggle_image_size(state: int) -> None:
+                visible = bool(state)
+                self._image_size_combo.setVisible(visible)
+                self._image_size_label.setVisible(visible)
+
+            self._images_checkbox.stateChanged.connect(_toggle_image_size)
+
+            opts_group.setLayout(opts_form)
+            layout.addWidget(opts_group)
+
+        elif mode == GenerationMode.IMAGE:
+            opts_group = QGroupBox("Опции генерации")
+            opts_form = QFormLayout()
+            opts_form.setSpacing(8)
+            opts_form.setContentsMargins(8, 6, 8, 8)
+            opts_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+            opts_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+            self._image_size_combo = self._create_image_size_combo()
+            opts_form.addRow("Размер изображения:", self._image_size_combo)
+
+            opts_group.setLayout(opts_form)
+            layout.addWidget(opts_group)
+
+        elif mode == GenerationMode.AUDIO:
+            opts_group = QGroupBox("Опции генерации")
+            opts_form = QFormLayout()
+            opts_form.setSpacing(8)
+            opts_form.setContentsMargins(8, 6, 8, 8)
+            opts_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+            opts_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+            self._voice_combo = self._create_voice_combo()
+            opts_form.addRow("Голос диктора:", self._voice_combo)
+
+            opts_group.setLayout(opts_form)
+            layout.addWidget(opts_group)
+
+        # === Секция 3: Custom prompt (только для language) ===
         if _should_show_custom_prompt(mode):
-            self._custom_prompt_toggle = QCheckBox("Custom prompt")
-            self._custom_prompt_toggle.setChecked(False)
-            layout.addWidget(self._custom_prompt_toggle)
+            prompt_group = QGroupBox("Кастомный промпт")
+            prompt_group.setCheckable(True)
+            prompt_group.setChecked(False)
+            prompt_vlayout = QVBoxLayout()
+            prompt_vlayout.setContentsMargins(8, 6, 8, 8)
 
             self._custom_prompt_input = QPlainTextEdit()
-            self._custom_prompt_input.setPlaceholderText(_get_default_custom_prompt())
-            self._custom_prompt_input.setMaximumHeight(100)
-            self._custom_prompt_input.setVisible(False)
-            layout.addWidget(self._custom_prompt_input)
+            self._custom_prompt_input.setPlaceholderText(_get_default_custom_prompt(mode))
+            self._custom_prompt_input.setMaximumHeight(90)
+            self._custom_prompt_input.setEnabled(False)
+            prompt_vlayout.addWidget(self._custom_prompt_input)
+            prompt_group.setLayout(prompt_vlayout)
+            prompt_group.toggled.connect(self._custom_prompt_input.setEnabled)
 
-            self._custom_prompt_toggle.toggled.connect(self._custom_prompt_input.setVisible)
+            self._custom_prompt_toggle = prompt_group
+            layout.addWidget(prompt_group)
         else:
             self._custom_prompt_toggle = None
             self._custom_prompt_input = None
 
-        # --- Прогресс-виджет ---
+        # --- Единственная строка статуса/стоимости ---
+        self._cost_label = QLabel("")
+        self._cost_label.setStyleSheet("color: #999999;")
+        layout.addWidget(self._cost_label)
+
+        # Обновляем оценку при изменении текста
+        self._input_text.textChanged.connect(self._update_cost_estimate)
+
+        # --- Прогресс-виджет (бар + Cancel) ---
         self._progress_widget = ProgressWidget(self._dialog)
         layout.addWidget(self._progress_widget.widget)
 
-        # --- Статус ---
-        self._status_label = QLabel("")
-        layout.addWidget(self._status_label)
+        layout.addStretch()
 
-        # --- Кнопки ---
-        button_box = QDialogButtonBox()
-        self._generate_btn = button_box.addButton("Generate", QDialogButtonBox.ButtonRole.AcceptRole)
+        # --- Кнопки нижней панели ---
+        buttons_layout = QHBoxLayout()
+
+        self._back_btn = QPushButton("← Назад")
+        self._back_btn.clicked.connect(self._on_back)
+        buttons_layout.addWidget(self._back_btn)
+
+        buttons_layout.addStretch()
+
+        self._again_btn = QPushButton("Ещё раз")
+        self._again_btn.setObjectName("againBtn")
+        self._again_btn.clicked.connect(self._on_generate_again)
+        self._again_btn.setVisible(False)
+        buttons_layout.addWidget(self._again_btn)
+
+        self._generate_btn = QPushButton("Сгенерировать")
+        self._generate_btn.setObjectName("generateBtn")
+        self._generate_btn.setDefault(True)
         self._generate_btn.clicked.connect(self._on_generate)
-        button_box.addButton(QDialogButtonBox.StandardButton.Cancel)
-        button_box.rejected.connect(self._dialog.reject)
-        layout.addWidget(button_box)
+        buttons_layout.addWidget(self._generate_btn)
 
-    def _on_deck_changed(self, _index: int) -> None:
-        """Показывает/скрывает поле новой колоды."""
-        is_new = self._deck_combo.currentData() == ""
-        self._new_deck_input.setVisible(is_new)
+        layout.addLayout(buttons_layout)
+
+        self._go_back = False
+
+    def _get_material_options(self) -> MaterialOptions | None:
+        """Собирает MaterialOptions из UI (только для material режима).
+
+        Returns:
+            MaterialOptions или None если не material режим.
+        """
+        if self._mode != GenerationMode.MATERIAL:
+            return None
+
+        max_cards = 3
+        if self._max_cards_spin is not None:
+            max_cards = self._max_cards_spin.value()  # type: ignore[union-attr]
+
+        include_images = self._images_checkbox.isChecked()
+        image_size = "auto"
+        if self._image_size_combo is not None:
+            image_size = self._image_size_combo.currentData() or "auto"
+
+        answer_detail = AnswerDetail.SHORT
+        if self._answer_detail_combo is not None:
+            value = self._answer_detail_combo.currentData()
+            answer_detail = AnswerDetail(value) if value else AnswerDetail.SHORT
+
+        return MaterialOptions(
+            max_cards_per_paragraph=max_cards,
+            include_images=include_images,
+            image_size=image_size,
+            answer_detail=answer_detail,
+        )
+
+    def _create_voice_combo(self) -> object:
+        """Создаёт комбобокс выбора голоса диктора."""
+        from aqt.qt import QComboBox
+
+        combo = QComboBox()
+        combo.addItem("Alloy (нейтральный)", "alloy")
+        combo.addItem("Ash (мужской, тёплый)", "ash")
+        combo.addItem("Ballad (мужской, мягкий)", "ballad")
+        combo.addItem("Coral (женский, тёплый)", "coral")
+        combo.addItem("Echo (мужской, чёткий)", "echo")
+        combo.addItem("Fable (мужской, британский)", "fable")
+        combo.addItem("Nova (женский, энергичный)", "nova")
+        combo.addItem("Onyx (мужской, глубокий)", "onyx")
+        combo.addItem("Sage (женский, спокойный)", "sage")
+        combo.addItem("Shimmer (женский, яркий)", "shimmer")
+        combo.addItem("Verse (мужской, выразительный)", "verse")
+        return combo
+
+    def _create_image_size_combo(self) -> object:
+        """Создаёт комбобокс выбора размера изображения."""
+        from aqt.qt import QComboBox
+
+        combo = QComboBox()
+        combo.addItem("Авто (1K, по умолчанию)", "auto")
+        combo.addItem("0.5K (дешевле, для карточек достаточно)", "0.5K")
+        combo.addItem("1K (стандарт)", "1K")
+        combo.addItem("2K (высокое качество)", "2K")
+        combo.addItem("4K (максимальное)", "4K")
+        combo.currentIndexChanged.connect(self._update_cost_estimate)
+        return combo
 
     def _get_deck_name(self) -> tuple[str, bool]:
         """Возвращает имя колоды и флаг создания новой.
 
+        Если введённое имя совпадает с существующей колодой — использует её.
+        Если нет — помечает как новую для создания.
+
         Returns:
             (deck_name, create_new).
         """
-        if self._deck_combo.currentData() == "":
-            return self._new_deck_input.text(), True
-        return str(self._deck_combo.currentData()), False
+        return _get_deck_name_from_combo(self._deck_combo.currentText(), self._existing_decks)
+
+    def _get_language_options(self) -> LanguageOptions | None:
+        """Собирает LanguageOptions из чекбоксов (только для language режима).
+
+        Returns:
+            LanguageOptions или None если не language режим.
+        """
+        if not self._lang_options_checkboxes:
+            return None
+        from ankiforge.models import LanguageOptions
+
+        image_size = "auto"
+        if self._image_size_combo is not None:
+            image_size = self._image_size_combo.currentData() or "auto"
+
+        voice = "alloy"
+        if hasattr(self, "_voice_combo"):
+            voice = self._voice_combo.currentData() or "alloy"
+
+        return LanguageOptions(
+            include_photo=self._lang_options_checkboxes["include_photo"].isChecked(),
+            include_audio_word=self._lang_options_checkboxes["include_audio_word"].isChecked(),
+            include_audio_definition=self._lang_options_checkboxes["include_audio_definition"].isChecked(),
+            include_audio_example=self._lang_options_checkboxes["include_audio_example"].isChecked(),
+            include_transcription=self._lang_options_checkboxes["include_transcription"].isChecked(),
+            image_size=image_size,
+            detailed_image=self._lang_options_checkboxes["detailed_image"].isChecked(),
+            voice=voice,
+        )
+
+    def _get_max_cards_per_paragraph(self) -> int:
+        """Возвращает текущее значение max_cards_per_paragraph из спинбокса."""
+        if self._max_cards_spin is not None:
+            return self._max_cards_spin.value()  # type: ignore[union-attr]
+        return 3
+
+    def _update_cost_estimate(self) -> None:
+        """Обновляет оценку стоимости из кэшированного pricing в конфиге."""
+        self._cost_label.setStyleSheet("color: #999999;")
+        text = self._input_text.toPlainText()
+        card_count = _count_input_items(text, self._mode, max_cards_per_paragraph=self._get_max_cards_per_paragraph())
+        if card_count == 0:
+            self._cost_label.setText("")
+            return
+
+        config = get_config()
+        lang_opts = self._get_language_options()
+        cost = _estimate_cost_from_config(config, self._mode, card_count, lang_opts)
+        if cost is None:
+            self._cost_label.setText(f"{card_count} карточек (pricing не загружен — откройте настройки)")
+            return
+
+        cost_text = _format_cost(cost)
+        self._cost_label.setText(f"Оценка: {cost_text} ({card_count} карточек)")
+
+    def _on_back(self) -> None:
+        """Обработчик кнопки Назад — возврат к выбору режима."""
+        self._go_back = True
+        self._dialog.reject()
+
+    # --- Три состояния кнопок: idle / generating / done ---
+
+    def _reconnect_generate_btn(self, slot: Callable[[], None]) -> None:
+        """Отключает все слоты от clicked и подключает новый."""
+        import contextlib
+
+        with contextlib.suppress(TypeError, RuntimeError):
+            self._generate_btn.clicked.disconnect()
+        self._generate_btn.clicked.connect(slot)
+
+    def _set_buttons_idle(self) -> None:
+        """Состояние idle: до генерации или после сброса."""
+        self._back_btn.setEnabled(True)
+        self._again_btn.setVisible(False)
+        self._generate_btn.setText("Сгенерировать")
+        self._generate_btn.setObjectName("generateBtn")
+        self._generate_btn.setEnabled(True)
+        self._generate_btn.setVisible(True)
+        self._reconnect_generate_btn(self._on_generate)
+
+    def _set_buttons_generating(self) -> None:
+        """Состояние generating: идёт генерация."""
+        self._back_btn.setEnabled(False)
+        self._again_btn.setVisible(False)
+        self._generate_btn.setText("Отменить")
+        self._generate_btn.setEnabled(True)
+        self._reconnect_generate_btn(self._on_cancel)
+
+    def _set_buttons_done(self) -> None:
+        """Состояние done: генерация завершена."""
+        self._back_btn.setEnabled(True)
+        self._again_btn.setVisible(True)
+        self._generate_btn.setText("Закрыть")
+        self._generate_btn.setEnabled(True)
+        self._reconnect_generate_btn(self._dialog.accept)
+
+    def _on_generate_again(self) -> None:
+        """Сбрасывает UI для повторной генерации."""
+        self._progress_widget.hide()
+        self._cost_label.setText("")
+        self._set_buttons_idle()
+        self._update_cost_estimate()
 
     def _on_generate(self) -> None:
         """Обработчик кнопки Generate — валидация, оценка стоимости, асинхронная генерация."""
         deck_name, create_new = self._get_deck_name()
         config = get_config()
 
-        # Custom prompt (только для language)
+        # Custom prompt
         custom_prompt: str | None = None
         if (
             self._custom_prompt_input is not None
@@ -617,6 +1340,13 @@ class InputDialog:
         ):
             custom_prompt = self._custom_prompt_input.toPlainText()
 
+        # Собираем MaterialOptions
+        mat_opts = self._get_material_options()
+
+        # Собираем voice и image_size
+        voice = self._voice_combo.currentData() or "alloy" if self._voice_combo is not None else "alloy"
+        image_size = self._image_size_combo.currentData() or "auto" if self._image_size_combo is not None else "auto"
+
         try:
             request = _build_card_request(
                 mode=self._mode,
@@ -624,41 +1354,33 @@ class InputDialog:
                 deck_name=deck_name,
                 create_new_deck=create_new,
                 include_images=self._images_checkbox.isChecked(),
-                language=config.language,
+                language=self._language_combo.currentData() or "en",
                 custom_prompt=custom_prompt,
+                language_options=self._get_language_options(),
+                material_options=mat_opts,
+                voice=voice,
+                image_size=image_size,
             )
         except ValueError as e:
-            self._status_label.setText(str(e))
-            self._status_label.setStyleSheet("color: red;")
+            self._cost_label.setText(str(e))
+            self._cost_label.setStyleSheet("color: #f44336;")
             return
 
         from ankiforge.openrouter.client import OpenRouterClient
 
         client = OpenRouterClient(api_key=config.api_key)
 
-        # Подсчёт карточек и оценка стоимости
-        card_count = _count_input_items(request.input_text, self._mode)
+        # Подтягиваем актуальный pricing из OpenRouter (модель могла смениться)
+        self._ensure_pricing(config, client)
 
-        # Попытка получить модели для оценки стоимости
-        try:
-            models = client.fetch_models()
-        except Exception:  # noqa: BLE001
-            models = []
-
-        cost_text = _estimate_and_format_cost(
-            client=client,
-            mode=self._mode,
-            card_count=card_count,
-            models=models,
-            text_model_id=config.text_model,
-            image_model_id=config.image_model,
-            audio_model_id=config.audio_model,
+        # Подсчёт карточек
+        card_count = _count_input_items(
+            request.input_text, self._mode, max_cards_per_paragraph=self._get_max_cards_per_paragraph()
         )
 
-        # Блокируем UI и показываем прогресс
-        self._generate_btn.setEnabled(False)
-        self._status_label.setText("")
-        self._progress_widget.show(cost_text, card_count)
+        # Переключаем кнопки и показываем прогресс
+        self._set_buttons_generating()
+        self._progress_widget.show(card_count)
 
         # Создаём генератор
         generator = _create_generator(
@@ -668,6 +1390,9 @@ class InputDialog:
             image_model=config.image_model,
             audio_model=config.audio_model,
             include_images=request.include_images,
+            config=config,
+            image_size=image_size,
+            voice=voice,
         )
 
         # Ensure note types exist (до запуска потока — работает с Anki API из главного потока)
@@ -681,13 +1406,18 @@ class InputDialog:
         self._worker.connect_progress(self._on_progress_updated)
         self._worker.connect_finished(self._on_generation_finished)
         self._worker.connect_error(self._on_generation_error)
-        self._progress_widget.cancel_button.clicked.connect(self._on_cancel)  # type: ignore[attr-defined]
         self._worker.start()
 
     def _on_progress_updated(self, progress: GenerationProgress) -> None:
         """Обновляет UI по сигналу прогресса из рабочего потока."""
         self._last_progress = progress
         self._progress_widget.update_progress(progress)
+        cost_text = _format_cost(progress.current_cost) if progress.current_cost > 0 else ""
+        parts = [f"{progress.completed_cards}/{progress.total_cards} карточек"]
+        if cost_text:
+            parts.append(f"потрачено: {cost_text}")
+        self._cost_label.setText(" · ".join(parts))
+        self._cost_label.setStyleSheet("color: #999999;")
 
     def _on_generation_finished(self, cards: list[GeneratedCard]) -> None:
         """Обработка успешного завершения генерации."""
@@ -700,25 +1430,51 @@ class InputDialog:
         if hasattr(self, "_last_progress"):
             total_cost = self._last_progress.current_cost
 
-        summary = _format_summary(len(cards), total_cost)
-        self._progress_widget.finish(summary)
-        self._status_label.setText(summary)
-        self._status_label.setStyleSheet("color: green;")
-        self._generate_btn.setEnabled(True)
+        # Логируем расходы
+        _log_cost(self._mode, len(cards), total_cost)
+
+        self._progress_widget.finish()
+        self._cost_label.setText(f"Готово · {len(cards)} карточек · {_format_cost(total_cost)}")
+        self._cost_label.setStyleSheet("color: #4caf50;")
+        self._set_buttons_done()
         self._worker = None
+
+        # Обновляем главное окно Anki чтобы показать новые карточки
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            self._mw.reset()
 
     def _on_generation_error(self, error_msg: str) -> None:
         """Обработка ошибки генерации."""
         self._progress_widget.hide()
-        self._status_label.setText(f"Ошибка: {error_msg}")
-        self._status_label.setStyleSheet("color: red;")
-        self._generate_btn.setEnabled(True)
+        self._cost_label.setText(f"Ошибка: {error_msg}")
+        self._cost_label.setStyleSheet("color: #f44336;")
+        self._set_buttons_idle()
         self._worker = None
 
     def _on_cancel(self) -> None:
         """Отменяет текущую генерацию."""
         if self._worker is not None:
             self._worker.cancel()
+
+    def _ensure_pricing(self, config: AddonConfig, client: OpenRouterClient) -> None:
+        """Подтягивает pricing моделей — всегда обновляет все три из API."""
+        import contextlib
+
+        from ankiforge.config.dialog import _extract_pricing
+        from ankiforge.config.manager import save_config
+
+        with contextlib.suppress(Exception):
+            models = client.fetch_models()
+            # Всегда обновляем pricing — модель могла смениться
+            if config.text_model:
+                config.text_model_pricing = _extract_pricing(config.text_model, models)
+            if config.image_model:
+                config.image_model_pricing = _extract_pricing(config.image_model, models)
+            if config.audio_model:
+                config.audio_model_pricing = _extract_pricing(config.audio_model, models)
+            save_config(config)
 
     def _ensure_note_types(self, mode: GenerationMode) -> None:
         """Создаёт нужные note types для выбранного режима."""
@@ -741,6 +1497,11 @@ class InputDialog:
         else:
             ensure_qa_note_type()
 
-    def run(self) -> None:
-        """Показывает диалог модально."""
-        self._dialog.exec()
+    def run(self) -> bool:
+        """Показывает диалог модально.
+
+        Returns:
+            True если пользователь нажал Назад (для возврата к выбору режима).
+        """
+        self._dialog.exec()  # type: ignore[no-untyped-call]
+        return self._go_back
