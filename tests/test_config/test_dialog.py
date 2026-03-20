@@ -261,32 +261,74 @@ class TestPopulateModelCombo:
 class TestGetSelectedModelId:
     """Тесты получения ID выбранной модели из combobox."""
 
-    def test_returns_model_id(self) -> None:
+    def test_returns_model_id_from_data(self) -> None:
         from ankiforge.config.dialog import _get_selected_model_id
 
         combo = MagicMock()
         combo.currentData.return_value = "openai/gpt-4o"
         assert _get_selected_model_id(combo) == "openai/gpt-4o"
 
-    def test_returns_empty_when_none(self) -> None:
+    def test_returns_empty_when_no_text(self) -> None:
         from ankiforge.config.dialog import _get_selected_model_id
 
         combo = MagicMock()
         combo.currentData.return_value = None
+        combo.currentText.return_value = ""
         assert _get_selected_model_id(combo) == ""
 
-    def test_returns_empty_when_no_selection(self) -> None:
+    def test_returns_empty_for_placeholder(self) -> None:
         from ankiforge.config.dialog import _get_selected_model_id
 
         combo = MagicMock()
-        combo.currentIndex.return_value = -1
         combo.currentData.return_value = None
+        combo.currentText.return_value = "— не выбрано —"
         assert _get_selected_model_id(combo) == ""
+
+    def test_extracts_id_from_display_format(self) -> None:
+        """Извлекает ID из формата 'Model Name (provider/model-id)'."""
+        from ankiforge.config.dialog import _get_selected_model_id
+
+        combo = MagicMock()
+        combo.currentData.return_value = None
+        combo.currentText.return_value = "GPT-4o (openai/gpt-4o)"
+        assert _get_selected_model_id(combo) == "openai/gpt-4o"
+
+    def test_returns_raw_text_as_model_id(self) -> None:
+        """Возвращает введённый текст как ID если нет скобок."""
+        from ankiforge.config.dialog import _get_selected_model_id
+
+        combo = MagicMock()
+        combo.currentData.return_value = None
+        combo.currentText.return_value = "google/gemini-2.5-flash-lite-preview-09-2025"
+        assert _get_selected_model_id(combo) == "google/gemini-2.5-flash-lite-preview-09-2025"
 
 
 # ---------------------------------------------------------------------------
 # SettingsDialog import
 # ---------------------------------------------------------------------------
+
+
+class TestExtractPricing:
+    """Тесты извлечения pricing для кастомных и обычных моделей."""
+
+    def test_returns_pricing_for_known_model(self, sample_models: list[Model]) -> None:
+        from ankiforge.config.dialog import _extract_pricing
+
+        result = _extract_pricing("openai/gpt-4o", sample_models)
+        assert result is not None
+        assert result.prompt == 0.005  # type: ignore[union-attr]
+
+    def test_returns_none_for_unknown_model(self, sample_models: list[Model]) -> None:
+        from ankiforge.config.dialog import _extract_pricing
+
+        result = _extract_pricing("google/unknown-model", sample_models)
+        assert result is None
+
+    def test_returns_none_for_empty_id(self, sample_models: list[Model]) -> None:
+        from ankiforge.config.dialog import _extract_pricing
+
+        result = _extract_pricing("", sample_models)
+        assert result is None
 
 
 class TestSettingsDialogImport:
@@ -355,3 +397,68 @@ class TestSetupSettingsMenu:
         mock_menu.addAction.assert_called_once()
         call_args = mock_menu.addAction.call_args
         assert "AnkiForge" in call_args[0][0]
+
+
+# ---------------------------------------------------------------------------
+# make_searchable_combo
+# ---------------------------------------------------------------------------
+
+
+class TestMakeSearchableCombo:
+    """Тесты создания searchable combobox (мокается Qt)."""
+
+    def test_returns_editable_combo(self) -> None:
+        """_make_searchable_combo создаёт editable combo с completer."""
+        mock_combo = MagicMock()
+        mock_completer = MagicMock()
+        mock_qt = MagicMock()
+
+        with patch.dict("sys.modules", {"aqt.qt": mock_qt, "aqt": MagicMock()}):
+            mock_qt.QComboBox.return_value = mock_combo
+            mock_qt.QCompleter.return_value = mock_completer
+
+            from importlib import reload
+
+            import ankiforge.config.dialog as dialog_mod
+
+            reload(dialog_mod)
+            dialog_mod._make_searchable_combo()
+
+            mock_combo.setEditable.assert_called_once_with(True)
+            mock_combo.setInsertPolicy.assert_called_once()
+            mock_combo.setCompleter.assert_called_once_with(mock_completer)
+            mock_completer.setFilterMode.assert_called_once()
+            mock_completer.setCaseSensitivity.assert_called_once()
+
+
+class TestPopulateSearchableCombo:
+    """Тесты заполнения searchable combo — используем MagicMock."""
+
+    def test_populates_and_updates_completer(self, sample_models: list[Model]) -> None:
+        """populate_model_combo обновляет completer при editable combo."""
+        combo = MagicMock()
+        combo.isEditable.return_value = True
+        mock_completer = MagicMock()
+        combo.completer.return_value = mock_completer
+        mock_model = MagicMock()
+        combo.model.return_value = mock_model
+
+        from ankiforge.config.dialog import _populate_model_combo
+
+        text_models = [m for m in sample_models if Modality.TEXT in m.modalities]
+        _populate_model_combo(combo, text_models, current_id="openai/gpt-4o")
+
+        # completer.setModel вызван с моделью combo
+        mock_completer.setModel.assert_called_once_with(mock_model)
+
+    def test_skips_completer_for_non_editable(self, sample_models: list[Model]) -> None:
+        """populate_model_combo не трогает completer для обычного combo."""
+        combo = MagicMock()
+        combo.isEditable.return_value = False
+
+        from ankiforge.config.dialog import _populate_model_combo
+
+        text_models = [m for m in sample_models if Modality.TEXT in m.modalities]
+        _populate_model_combo(combo, text_models, current_id="")
+
+        combo.completer.assert_not_called()

@@ -42,18 +42,38 @@ def _fallback_config_path() -> Path:
     return Path(__file__).parent.parent / "config.json"
 
 
-def _dict_to_config(data: dict[str, str] | None) -> AddonConfig:
+def _parse_pricing(data: object) -> object:
+    """Парсит pricing из словаря конфига."""
+    from ankiforge.models import ModelPricingCache
+
+    if not isinstance(data, dict):
+        return None
+    return ModelPricingCache(
+        prompt=float(data.get("prompt", 0) or 0),
+        completion=float(data.get("completion", 0) or 0),
+        image=float(data.get("image", 0) or 0),
+        request=float(data.get("request", 0) or 0),
+    )
+
+
+def _dict_to_config(data: dict[str, object] | None) -> AddonConfig:
     """Конвертирует словарь в AddonConfig с дефолтами для отсутствующих полей."""
     if not data:
         return AddonConfig()
 
     defaults = AddonConfig()
+    cached_balance_raw = data.get("cached_balance")
+    cached_balance = float(cached_balance_raw) if cached_balance_raw is not None else None
     return AddonConfig(
-        api_key=data.get("api_key", defaults.api_key),
-        text_model=data.get("text_model", defaults.text_model),
-        image_model=data.get("image_model", defaults.image_model),
-        audio_model=data.get("audio_model", defaults.audio_model),
-        language=data.get("language", defaults.language),
+        api_key=str(data.get("api_key", defaults.api_key)),
+        text_model=str(data.get("text_model", defaults.text_model)),
+        image_model=str(data.get("image_model", defaults.image_model)),
+        audio_model=str(data.get("audio_model", defaults.audio_model)),
+        language=str(data.get("language", defaults.language)),
+        text_model_pricing=_parse_pricing(data.get("text_model_pricing")),
+        image_model_pricing=_parse_pricing(data.get("image_model_pricing")),
+        audio_model_pricing=_parse_pricing(data.get("audio_model_pricing")),
+        cached_balance=cached_balance,
     )
 
 

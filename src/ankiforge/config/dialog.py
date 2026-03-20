@@ -10,7 +10,34 @@ from ankiforge.openrouter.models import Modality, Model
 
 if TYPE_CHECKING:
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
-    from aqt.qt import QComboBox  # type: ignore[import-not-found]
+    from aqt.qt import QComboBox, QLabel  # type: ignore[import-not-found]
+
+
+# ---------------------------------------------------------------------------
+# QSS — минимальный стиль, palette-friendly (работает и в dark, и в light)
+# ---------------------------------------------------------------------------
+
+_DIALOG_QSS = """
+QGroupBox {
+    font-weight: bold;
+    border: 1px solid palette(mid);
+    border-radius: 6px;
+    margin-top: 12px;
+    padding: 12px 8px 8px 8px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 6px;
+}
+QComboBox:editable {
+    padding: 4px 6px;
+}
+QPushButton#connectBtn {
+    padding: 6px 20px;
+    font-weight: bold;
+}
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -31,6 +58,31 @@ def _filter_models_by_modality(models: list[Model], modality: Modality) -> list[
     return [m for m in models if modality in m.modalities]
 
 
+def _extract_pricing(model_id: str, models: list[Model]) -> object:
+    """Извлекает pricing модели по ID.
+
+    Args:
+        model_id: ID модели.
+        models: Список загруженных моделей.
+
+    Returns:
+        ModelPricingCache или None если модель не найдена.
+    """
+    from ankiforge.models import ModelPricingCache
+
+    if not model_id:
+        return None
+    for m in models:
+        if m.id == model_id:
+            return ModelPricingCache(
+                prompt=m.pricing.prompt,
+                completion=m.pricing.completion,
+                image=m.pricing.image,
+                request=m.pricing.request,
+            )
+    return None
+
+
 def _build_config_from_dialog_state(
     *,
     api_key: str,
@@ -38,6 +90,7 @@ def _build_config_from_dialog_state(
     image_model_id: str,
     audio_model_id: str,
     language: str,
+    models: list[Model] | None = None,
 ) -> AddonConfig:
     """Собирает AddonConfig из значений диалога.
 
@@ -47,17 +100,44 @@ def _build_config_from_dialog_state(
         image_model_id: ID image модели.
         audio_model_id: ID audio модели.
         language: Язык карточек.
+        models: Загруженные модели для извлечения pricing.
 
     Returns:
         Сконфигурированный AddonConfig.
     """
+    all_models = models or []
     return AddonConfig(
         api_key=api_key.strip(),
         text_model=text_model_id,
         image_model=image_model_id,
         audio_model=audio_model_id,
         language=language,
+        text_model_pricing=_extract_pricing(text_model_id, all_models),
+        image_model_pricing=_extract_pricing(image_model_id, all_models),
+        audio_model_pricing=_extract_pricing(audio_model_id, all_models),
     )
+
+
+def _make_searchable_combo() -> QComboBox:
+    """Создаёт QComboBox с поиском по подстроке.
+
+    Returns:
+        Editable QComboBox с QCompleter (MatchContains, CaseInsensitive).
+    """
+    from aqt.qt import QComboBox, QCompleter, Qt  # type: ignore[import-not-found]
+
+    combo = QComboBox()
+    combo.setEditable(True)
+    combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+    combo.lineEdit().setPlaceholderText("Начните вводить название модели...")
+
+    completer = QCompleter()
+    completer.setFilterMode(Qt.MatchFlag.MatchContains)
+    completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+    completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+    combo.setCompleter(completer)
+
+    return combo
 
 
 def _populate_model_combo(combo: QComboBox, models: list[Model], current_id: str) -> None:
@@ -80,9 +160,16 @@ def _populate_model_combo(combo: QComboBox, models: list[Model], current_id: str
     if selected_index > 0:
         combo.setCurrentIndex(selected_index)
 
+    # Обновляем модель completer'а если combo editable
+    if combo.isEditable() and combo.completer() is not None:
+        combo.completer().setModel(combo.model())
+
 
 def _get_selected_model_id(combo: QComboBox) -> str:
     """Получает ID выбранной модели из QComboBox.
+
+    Если пользователь выбрал из списка — возвращает data (ID).
+    Если ввёл кастомный текст — извлекает ID из текста.
 
     Args:
         combo: QComboBox с моделями.
@@ -91,9 +178,33 @@ def _get_selected_model_id(combo: QComboBox) -> str:
         ID модели или пустая строка.
     """
     data = combo.currentData()
-    if data is None:
+    if data is not None:
+        return str(data)
+
+    # Кастомный ввод — пользователь набрал текст руками
+    text = combo.currentText().strip()
+    if not text or text == "— не выбрано —":
         return ""
-    return str(data)
+
+    # Текст может быть в формате "ModelName (provider/model-id)" — извлекаем ID из скобок
+    if "(" in text and text.endswith(")"):
+        return text[text.rfind("(") + 1 : -1].strip()
+
+    # Или просто ID модели напрямую (например "google/gemini-2.5-flash")
+    return text
+
+
+def _set_status(label: QLabel, text: str, *, ok: bool) -> None:
+    """Устанавливает текст и цвет статусного лейбла.
+
+    Args:
+        label: QLabel для статуса.
+        text: Текст сообщения.
+        ok: True — зелёный, False — красный.
+    """
+    label.setText(text)
+    color = "#4caf50" if ok else "#f44336"
+    label.setStyleSheet(f"color: {color}; font-weight: normal;")
 
 
 def _validate_api_key_action(api_key: str) -> tuple[bool, str | None]:
@@ -129,10 +240,10 @@ class SettingsDialog:
             mw: Главное окно Anki.
         """
         from aqt.qt import (
-            QComboBox,
             QDialog,
             QDialogButtonBox,
             QFormLayout,
+            QGroupBox,
             QHBoxLayout,
             QLabel,
             QLineEdit,
@@ -145,61 +256,78 @@ class SettingsDialog:
 
         self._dialog = QDialog(mw)
         self._dialog.setWindowTitle("AnkiForge Settings")
-        self._dialog.setMinimumWidth(500)
+        self._dialog.setMinimumWidth(560)
+        self._dialog.setStyleSheet(_DIALOG_QSS)
 
         layout = QVBoxLayout()
+        layout.setSpacing(12)
         self._dialog.setLayout(layout)
 
-        form = QFormLayout()
+        # === Секция 1: Подключение к OpenRouter ===
+        api_group = QGroupBox("Подключение к OpenRouter")
+        api_layout = QFormLayout()
+        api_layout.setSpacing(8)
+        api_group.setLayout(api_layout)
 
-        # --- API-ключ ---
-        api_key_layout = QHBoxLayout()
+        # API-ключ
+        api_key_row = QHBoxLayout()
         self._api_key_input = QLineEdit()
         self._api_key_input.setPlaceholderText("sk-or-...")
         self._api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        api_key_layout.addWidget(self._api_key_input)
+        api_key_row.addWidget(self._api_key_input)
 
-        validate_btn = QPushButton("Проверить")
-        validate_btn.clicked.connect(self._on_validate_key)
-        api_key_layout.addWidget(validate_btn)
+        connect_btn = QPushButton("Подключиться")
+        connect_btn.setObjectName("connectBtn")
+        connect_btn.clicked.connect(self._on_connect)
+        api_key_row.addWidget(connect_btn)
 
-        form.addRow("API-ключ OpenRouter:", api_key_layout)
+        api_layout.addRow("API-ключ:", api_key_row)
 
-        self._validation_label = QLabel("")
-        form.addRow("", self._validation_label)
+        self._api_status_label = QLabel("")
+        self._api_status_label.setWordWrap(True)
+        api_layout.addRow("", self._api_status_label)
 
-        # --- Модели ---
-        self._text_model_combo = QComboBox()
-        form.addRow("Текстовая модель:", self._text_model_combo)
+        layout.addWidget(api_group)
 
-        self._image_model_combo = QComboBox()
-        form.addRow("Image модель:", self._image_model_combo)
+        # === Секция 2: Модели ===
+        models_group = QGroupBox("Модели")
+        models_layout = QFormLayout()
+        models_layout.setSpacing(8)
+        models_group.setLayout(models_layout)
 
-        self._audio_model_combo = QComboBox()
-        form.addRow("Audio модель:", self._audio_model_combo)
+        self._text_model_combo = _make_searchable_combo()
+        models_layout.addRow("Текстовая модель:", self._text_model_combo)
 
-        # --- Язык ---
-        self._language_combo = QComboBox()
-        self._language_combo.addItem("English", "en")
-        self._language_combo.addItem("Русский", "ru")
-        self._language_combo.addItem("Deutsch", "de")
-        self._language_combo.addItem("Français", "fr")
-        self._language_combo.addItem("Español", "es")
-        self._language_combo.addItem("日本語", "ja")
-        self._language_combo.addItem("中文", "zh")
-        form.addRow("Язык карточек:", self._language_combo)
+        self._image_model_combo = _make_searchable_combo()
+        models_layout.addRow("Image модель:", self._image_model_combo)
 
-        layout.addLayout(form)
+        self._audio_model_combo = _make_searchable_combo()
+        models_layout.addRow("Audio модель:", self._audio_model_combo)
 
-        # --- Кнопка загрузки моделей ---
-        load_models_btn = QPushButton("Загрузить модели с OpenRouter")
-        load_models_btn.clicked.connect(self._on_load_models)
-        layout.addWidget(load_models_btn)
+        layout.addWidget(models_group)
 
-        self._status_label = QLabel("")
-        layout.addWidget(self._status_label)
+        # === Секция 3: Баланс ===
+        balance_group = QGroupBox("Баланс")
+        balance_layout = QFormLayout()
+        balance_layout.setSpacing(4)
+        balance_layout.setContentsMargins(8, 6, 8, 8)
 
-        # --- OK / Cancel ---
+        self._usage_label = QLabel("—")
+        self._usage_label.setStyleSheet("color: #999999;")
+        balance_layout.addRow("Использовано:", self._usage_label)
+
+        self._remaining_label = QLabel("—")
+        self._remaining_label.setStyleSheet("color: #999999;")
+        balance_layout.addRow("Остаток:", self._remaining_label)
+
+        refresh_balance_btn = QPushButton("Обновить")
+        refresh_balance_btn.clicked.connect(self._on_refresh_balance)
+        balance_layout.addRow("", refresh_balance_btn)
+
+        balance_group.setLayout(balance_layout)
+        layout.addWidget(balance_group)
+
+        # === OK / Cancel ===
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self._dialog.reject)
@@ -213,11 +341,9 @@ class SettingsDialog:
         config = get_config()
         self._api_key_input.setText(config.api_key)
 
-        # Устанавливаем язык
-        for i in range(self._language_combo.count()):
-            if self._language_combo.itemData(i) == config.language:
-                self._language_combo.setCurrentIndex(i)
-                break
+        # Показываем кэшированный баланс
+        if config.cached_balance is not None:
+            self._remaining_label.setText(f"${config.cached_balance:.2f}")
 
         # Модели — пытаемся загрузить если есть API-ключ
         if config.api_key:
@@ -231,6 +357,8 @@ class SettingsDialog:
             client = OpenRouterClient(api_key=config.api_key)
             self._models = client.fetch_models()
             self._populate_combos(config)
+            count = len(self._models)
+            _set_status(self._api_status_label, f"Подключено, загружено {count} моделей", ok=True)
         except Exception:  # noqa: BLE001
             pass
 
@@ -244,30 +372,20 @@ class SettingsDialog:
         _populate_model_combo(self._image_model_combo, image_models, config.image_model)
         _populate_model_combo(self._audio_model_combo, audio_models, config.audio_model)
 
-    def _on_validate_key(self) -> None:
-        """Обработчик кнопки валидации API-ключа."""
+    def _on_connect(self) -> None:
+        """Обработчик кнопки Подключиться — валидация ключа + загрузка моделей."""
         api_key = self._api_key_input.text().strip()
         is_valid, error = _validate_api_key_action(api_key)
 
-        if is_valid:
-            self._validation_label.setText("Ключ валиден")
-            self._validation_label.setStyleSheet("color: green;")
-        else:
-            self._validation_label.setText(f"{error}")
-            self._validation_label.setStyleSheet("color: red;")
-
-    def _on_load_models(self) -> None:
-        """Обработчик кнопки загрузки моделей."""
-        api_key = self._api_key_input.text().strip()
-        if not api_key:
-            self._status_label.setText("Сначала введите API-ключ")
-            self._status_label.setStyleSheet("color: red;")
+        if not is_valid:
+            _set_status(self._api_status_label, f"Ошибка: {error}", ok=False)
             return
 
+        # Ключ валиден — сразу грузим модели
         try:
             from ankiforge.openrouter.client import OpenRouterClient
 
-            self._status_label.setText("Загрузка...")
+            _set_status(self._api_status_label, "Загрузка моделей...", ok=True)
             client = OpenRouterClient(api_key=api_key)
             self._models = client.fetch_models()
 
@@ -275,20 +393,99 @@ class SettingsDialog:
             self._populate_combos(config)
 
             count = len(self._models)
-            self._status_label.setText(f"Загружено {count} моделей")
-            self._status_label.setStyleSheet("color: green;")
+            _set_status(self._api_status_label, f"Подключено, загружено {count} моделей", ok=True)
         except Exception as e:  # noqa: BLE001
-            self._status_label.setText(f"Ошибка: {e}")
-            self._status_label.setStyleSheet("color: red;")
+            _set_status(self._api_status_label, f"Ошибка загрузки моделей: {e}", ok=False)
+
+    def _on_refresh_balance(self) -> None:
+        """Запрашивает баланс из OpenRouter API и обновляет UI + кэш."""
+        api_key = self._api_key_input.text().strip()
+        if not api_key:
+            self._usage_label.setText("нет API-ключа")
+            self._remaining_label.setText("нет API-ключа")
+            return
+
+        self._usage_label.setText("загрузка...")
+        self._remaining_label.setText("загрузка...")
+        try:
+            from ankiforge.openrouter.client import OpenRouterClient
+
+            client = OpenRouterClient(api_key=api_key)
+            balance = client.fetch_balance()
+            usage = balance["usage"]
+            remaining = balance["remaining"]
+            self._usage_label.setText(f"${usage:.2f}")
+            if remaining < 0:
+                self._remaining_label.setText("неизвестно (безлимитный ключ)")
+            else:
+                self._remaining_label.setText(f"${remaining:.2f}")
+
+            # Кэшируем в конфиг
+            config = get_config()
+            config.cached_balance = remaining
+            save_config(config)
+        except Exception as e:  # noqa: BLE001
+            self._usage_label.setText(f"ошибка ({e})")
+            self._remaining_label.setText("—")
+
+    def _validate_custom_models(self) -> str | None:
+        """Проверяет кастомные модели (введённые вручную) через API.
+
+        Returns:
+            Сообщение об ошибке или None если всё ок.
+        """
+        combos = {
+            "Текстовая": self._text_model_combo,
+            "Image": self._image_model_combo,
+            "Audio": self._audio_model_combo,
+        }
+        known_ids = {m.id for m in self._models}
+
+        for label, combo in combos.items():
+            model_id = _get_selected_model_id(combo)
+            if not model_id or model_id in known_ids:
+                continue
+
+            # Кастомная модель — проверяем существование через API
+            api_key = self._api_key_input.text().strip()
+            if not api_key:
+                return f"{label} модель «{model_id}» не найдена в списке, а API-ключ не указан"
+
+            try:
+                from ankiforge.openrouter.client import OpenRouterClient
+
+                client = OpenRouterClient(api_key=api_key)
+                # Загружаем актуальный список моделей (без кэша)
+                client._models_cache = None  # noqa: SLF001
+                all_models = client.fetch_models()
+                found = next((m for m in all_models if m.id == model_id), None)
+                if found is None:
+                    return f"{label} модель «{model_id}» не найдена на OpenRouter"
+                # Добавляем найденную модель в локальный кэш
+                if found not in self._models:
+                    self._models.append(found)
+            except Exception as e:  # noqa: BLE001
+                return f"Ошибка проверки модели «{model_id}»: {e}"
+
+        return None
 
     def _on_accept(self) -> None:
-        """Обработчик кнопки OK — сохранение настроек."""
+        """Обработчик кнопки OK — валидация кастомных моделей + сохранение."""
+        # Валидация кастомных моделей
+        error = self._validate_custom_models()
+        if error:
+            from aqt.qt import QMessageBox  # type: ignore[import-not-found]
+
+            QMessageBox.warning(self._dialog, "Ошибка модели", error)
+            return
+
         config = _build_config_from_dialog_state(
             api_key=self._api_key_input.text(),
             text_model_id=_get_selected_model_id(self._text_model_combo),
             image_model_id=_get_selected_model_id(self._image_model_combo),
             audio_model_id=_get_selected_model_id(self._audio_model_combo),
-            language=self._language_combo.currentData() or "en",
+            language=get_config().language,
+            models=self._models,
         )
         save_config(config)
         self._dialog.accept()
