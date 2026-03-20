@@ -796,7 +796,7 @@ class InputDialog:
         self._dialog.setStyleSheet(DIALOG_QSS)
 
         layout = QVBoxLayout()
-        layout.setSpacing(12)
+        layout.setSpacing(16)
         layout.setContentsMargins(14, 14, 14, 14)
         self._dialog.setLayout(layout)
 
