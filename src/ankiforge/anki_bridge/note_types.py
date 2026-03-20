@@ -68,18 +68,17 @@ _BASE_CSS = """\
 
 /* ── Question — front face: large & bold ── */
 .front .question {
-  font-size: 1.4rem;
-  font-weight: 600;
-  line-height: 1.45;
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1.35;
   margin-bottom: 1rem;
 }
 
-/* ── Question — back face: demoted for cognitive load ── */
+/* ── Question — back face: same size as front ── */
 .back .question {
-  font-size: 0.95rem;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--af-text-secondary);
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1.35;
   margin-bottom: 0.75rem;
 }
 
@@ -94,6 +93,10 @@ hr#answer {
   font-size: 1.1rem;
   line-height: 1.6;
   text-align: left;
+  padding: 0.8rem 1rem;
+  background: var(--af-surface-accent);
+  border-left: 3px solid var(--af-accent-border);
+  border-radius: 0 8px 8px 0;
 }
 
 /* ── Audio player ── */
@@ -112,6 +115,14 @@ hr#answer {
   max-height: 280px;
   border-radius: 10px;
   object-fit: contain;
+}
+
+/* ── Audio controls ── */
+.audio-controls {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
 }
 
 /* ── Branding ── */
@@ -188,15 +199,10 @@ _LANGUAGE_EXTRA_CSS = """
 
 /* ── Language card extras ── */
 .word {
-  font-size: 2.2rem;
+  font-size: 1.8rem;
   font-weight: 700;
   line-height: 1.3;
   margin-bottom: 0.4rem;
-}
-
-.word--back {
-  font-size: 1.6rem;
-  margin-bottom: 0.3rem;
 }
 
 .transcription {
@@ -315,17 +321,19 @@ LANGUAGE_FRONT_TEMPLATE = """\
 LANGUAGE_BACK_TEMPLATE = (
     """\
 <div class="ankiforge-card back">
-  <div class="word word--back">{{Word}}</div>
+  <div class="word">{{Word}}</div>
   {{#Transcription}}<div class="transcription">{{Transcription}}</div>{{/Transcription}}
   <hr id="answer">
   <div class="definition">{{Definition}}</div>
-  <span data-role="def-audio">{{AudioDefinition}}</span>
-  <span data-role="silence" style="display:none">{{AudioSilence}}</span>
   <div class="example">{{Example}}</div>
-  <span data-role="ex-audio">{{AudioExample}}</span>
   {{#Image}}
   <div class="image">{{Image}}</div>
   {{/Image}}
+  <div class="audio-controls">
+    <span data-role="def-audio">{{AudioDefinition}}</span>
+    <span data-role="silence" style="display:none">{{AudioSilence}}</span>
+    <span data-role="ex-audio">{{AudioExample}}</span>
+  </div>
   <div class="branding">AnkiForge</div>
 </div>\n"""
     + _HLJS_SCRIPT
