@@ -195,12 +195,22 @@ class TestEnsureLanguageNoteTypeCreatesNew:
 
         assert result["name"] == LANGUAGE_NOTE_TYPE_NAME
 
-    def test_has_five_fields(self, language_mock_mw: MagicMock) -> None:
+    def test_has_nine_fields(self, language_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
             result = ensure_language_note_type()
 
         field_names = [f["name"] for f in result["flds"]]
-        assert field_names == ["Word", "Audio", "Definition", "Example", "Image"]
+        assert field_names == [
+            "Word",
+            "Audio",
+            "Definition",
+            "Example",
+            "Image",
+            "AudioDefinition",
+            "AudioSilence",
+            "AudioExample",
+            "Transcription",
+        ]
 
     def test_has_word_field(self, language_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
@@ -335,8 +345,13 @@ class TestEnsureLanguageNoteTypeCreatesNew:
 class TestEnsureLanguageNoteTypeExisting:
     """Тесты когда Language note type уже существует."""
 
-    def test_returns_existing_note_type(self, language_mock_mw: MagicMock) -> None:
-        existing = {"name": LANGUAGE_NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
+    def test_returns_existing_note_type_and_upgrades(self, language_mock_mw: MagicMock) -> None:
+        existing: dict[str, Any] = {
+            "name": LANGUAGE_NOTE_TYPE_NAME,
+            "flds": [{"name": n} for n in ("Word", "Audio", "Definition", "Example", "Image")],
+            "tmpls": [{"qfmt": "old", "afmt": "old"}],
+            "css": "old",
+        }
         language_mock_mw.col.models.by_name.return_value = existing
 
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
@@ -344,6 +359,9 @@ class TestEnsureLanguageNoteTypeExisting:
 
         assert result is existing
         language_mock_mw.col.models.add.assert_not_called()
+        # Upgrade добавляет 4 новых поля (AudioDefinition, AudioSilence, AudioExample, Transcription)
+        assert language_mock_mw.col.models.add_field.call_count == 4
+        language_mock_mw.col.models.save.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
