@@ -21,6 +21,7 @@ def mock_client() -> MagicMock:
     """Мок OpenRouterClient."""
     client = MagicMock(spec=OpenRouterClient)
     client.generate_text.return_value = "Ответ от AI"
+    client.last_cost = 0.0
     return client
 
 
@@ -238,3 +239,89 @@ class TestPrompt:
         prompt = mock_client.generate_text.call_args[0][0]
         # Промпт должен инструктировать AI давать компактный, но информативный ответ
         assert any(word in prompt.lower() for word in ["concise", "compact", "кратк", "компактн"])
+
+
+# ---------------------------------------------------------------------------
+# Custom prompt
+# ---------------------------------------------------------------------------
+
+
+class TestCostTracking:
+    def test_current_cost_accumulated(
+        self,
+        mock_client: MagicMock,
+    ) -> None:
+        """current_cost накапливается из client.last_cost после каждого вызова."""
+        mock_client.generate_text.return_value = "Ответ"
+        mock_client.last_cost = 0.01
+        generator = QuestionsGenerator(client=mock_client, model="m1")
+        request = CardRequest(
+            mode=GenerationMode.QUESTIONS,
+            input_text="Q1\nQ2\nQ3",
+            target_deck="Test",
+        )
+        costs: list[float] = []
+
+        def capture(progress: GenerationProgress) -> None:
+            costs.append(progress.current_cost)
+
+        generator.generate(request, capture)
+        # 3 вызова generate_text × $0.01 = $0.03
+        assert len(costs) == 3
+        assert costs[-1] == pytest.approx(0.03, abs=0.001)
+
+
+class TestTemperature:
+    def test_generate_text_called_with_temperature_03(
+        self,
+        generator: QuestionsGenerator,
+        mock_client: MagicMock,
+    ) -> None:
+        """generate_text вызывается с temperature=0.3."""
+        request = CardRequest(
+            mode=GenerationMode.QUESTIONS,
+            input_text="Что такое Python?",
+            target_deck="Test",
+        )
+        mock_client.generate_text.return_value = "Ответ"
+        generator.generate(request, MagicMock())
+        call = mock_client.generate_text.call_args
+        assert call.kwargs.get("temperature") == 0.3
+
+
+class TestCustomPrompt:
+    def test_custom_prompt_replaces_default(
+        self,
+        generator: QuestionsGenerator,
+        mock_client: MagicMock,
+    ) -> None:
+        request = CardRequest(
+            mode=GenerationMode.QUESTIONS,
+            input_text="Что такое рекурсия?",
+            target_deck="Test",
+            custom_prompt="Answer in one word only.",
+        )
+        mock_client.generate_text.return_value = "Ответ"
+
+        generator.generate(request, MagicMock())
+
+        prompt = mock_client.generate_text.call_args[0][0]
+        assert "Answer in one word only." in prompt
+        assert "concise" not in prompt.lower()
+
+    def test_no_custom_prompt_uses_default(
+        self,
+        generator: QuestionsGenerator,
+        mock_client: MagicMock,
+    ) -> None:
+        request = CardRequest(
+            mode=GenerationMode.QUESTIONS,
+            input_text="Что такое Python?",
+            target_deck="Test",
+        )
+        mock_client.generate_text.return_value = "Ответ"
+
+        generator.generate(request, MagicMock())
+
+        prompt = mock_client.generate_text.call_args[0][0]
+        assert any(word in prompt.lower() for word in ["concise", "compact"])

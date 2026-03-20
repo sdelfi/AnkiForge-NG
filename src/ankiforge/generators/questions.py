@@ -49,9 +49,12 @@ class QuestionsGenerator:
         progress = GenerationProgress(total_cards=len(questions))
         cards: list[GeneratedCard] = []
 
+        system_prompt = request.custom_prompt or _SYSTEM_PROMPT
+
         for question in questions:
-            prompt = f"{_SYSTEM_PROMPT}\n\nQuestion: {question}"
-            answer = self._client.generate_text(prompt, self._model)
+            prompt = f"{system_prompt}\n\nQuestion: {question}"
+            answer = self._client.generate_text(prompt, self._model, temperature=0.3)
+            progress.current_cost += self._client.last_cost
 
             cards.append(
                 GeneratedCard(

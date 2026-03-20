@@ -22,6 +22,7 @@ def mock_client() -> MagicMock:
     client = MagicMock(spec=OpenRouterClient)
     client.generate_text.return_value = "Ответ от AI на вопрос"
     client.generate_image.return_value = b"\x89PNG_fake_image_data"
+    client.last_cost = 0.0
     return client
 
 
@@ -237,3 +238,103 @@ class TestValidation:
         )
         with pytest.raises(ValueError, match="Не найдено вопросов"):
             generator.generate(request, MagicMock())
+
+
+# ---------------------------------------------------------------------------
+# image_size
+# ---------------------------------------------------------------------------
+
+
+class TestImageSize:
+    def test_image_size_from_constructor(self, mock_client: MagicMock) -> None:
+        gen = ImageGenerator(client=mock_client, text_model="m1", image_model="m2", image_size="2K")
+        request = CardRequest(
+            mode=GenerationMode.IMAGE,
+            input_text="Что такое ДНК?",
+            target_deck="Deck",
+        )
+        gen.generate(request, MagicMock())
+        call = mock_client.generate_image.call_args
+        assert call.kwargs.get("size") == "2K"
+
+    def test_image_size_from_request_overrides(self, mock_client: MagicMock) -> None:
+        gen = ImageGenerator(client=mock_client, text_model="m1", image_model="m2", image_size="1K")
+        request = CardRequest(
+            mode=GenerationMode.IMAGE,
+            input_text="Что такое ДНК?",
+            target_deck="Deck",
+            image_size="4K",
+        )
+        gen.generate(request, MagicMock())
+        call = mock_client.generate_image.call_args
+        assert call.kwargs.get("size") == "4K"
+
+    def test_default_image_size_auto(self, generator: ImageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.IMAGE,
+            input_text="Что такое ДНК?",
+            target_deck="Deck",
+        )
+        generator.generate(request, MagicMock())
+        call = mock_client.generate_image.call_args
+        assert call.kwargs.get("size") == "auto"
+
+
+# ---------------------------------------------------------------------------
+# Custom prompt
+# ---------------------------------------------------------------------------
+
+
+class TestCostTracking:
+    def test_current_cost_accumulated(
+        self,
+        mock_client: MagicMock,
+    ) -> None:
+        """current_cost накапливается из client.last_cost после каждого вызова."""
+        mock_client.last_cost = 0.02
+        generator = ImageGenerator(client=mock_client, text_model="m1", image_model="m2")
+        request = CardRequest(
+            mode=GenerationMode.IMAGE,
+            input_text="Q1\nQ2",
+            target_deck="Test",
+        )
+        costs: list[float] = []
+
+        def capture(progress: GenerationProgress) -> None:
+            costs.append(progress.current_cost)
+
+        generator.generate(request, capture)
+        # 2 карточки × (generate_text + generate_image) × $0.02 = $0.08
+        assert len(costs) == 2
+        assert costs[-1] == pytest.approx(0.08, abs=0.001)
+
+
+class TestTemperature:
+    def test_generate_text_called_with_temperature_03(
+        self,
+        generator: ImageGenerator,
+        mock_client: MagicMock,
+    ) -> None:
+        """generate_text вызывается с temperature=0.3."""
+        request = CardRequest(
+            mode=GenerationMode.IMAGE,
+            input_text="Что такое ДНК?",
+            target_deck="Deck",
+        )
+        generator.generate(request, MagicMock())
+        call = mock_client.generate_text.call_args
+        assert call.kwargs.get("temperature") == 0.3
+
+
+class TestCustomPrompt:
+    def test_custom_prompt_replaces_default(self, generator: ImageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.IMAGE,
+            input_text="Что такое ДНК?",
+            target_deck="Deck",
+            custom_prompt="Be very brief.",
+        )
+        generator.generate(request, MagicMock())
+        prompt = mock_client.generate_text.call_args[0][0]
+        assert "Be very brief." in prompt
+        assert "concise" not in prompt.lower()

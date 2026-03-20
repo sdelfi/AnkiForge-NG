@@ -29,10 +29,17 @@ _IMAGE_PROMPT_TEMPLATE = (
 class ImageGenerator:
     """Генератор QA+Image карточек из списка вопросов."""
 
-    def __init__(self, client: OpenRouterClient, text_model: str, image_model: str) -> None:
+    def __init__(
+        self,
+        client: OpenRouterClient,
+        text_model: str,
+        image_model: str,
+        image_size: str = "auto",
+    ) -> None:
         self._client = client
         self._text_model = text_model
         self._image_model = image_model
+        self._image_size = image_size
 
     def generate(
         self,
@@ -55,12 +62,17 @@ class ImageGenerator:
         progress = GenerationProgress(total_cards=len(questions))
         cards: list[GeneratedCard] = []
 
+        system_prompt = request.custom_prompt or _SYSTEM_PROMPT
+        image_size = request.image_size if request.image_size != "auto" else self._image_size
+
         for question in questions:
-            text_prompt = f"{_SYSTEM_PROMPT}\n\nQuestion: {question}"
-            answer = self._client.generate_text(text_prompt, self._text_model)
+            text_prompt = f"{system_prompt}\n\nQuestion: {question}"
+            answer = self._client.generate_text(text_prompt, self._text_model, temperature=0.3)
+            progress.current_cost += self._client.last_cost
 
             image_prompt = _IMAGE_PROMPT_TEMPLATE.format(topic=question)
-            image_data = self._client.generate_image(image_prompt, self._image_model)
+            image_data = self._client.generate_image(image_prompt, self._image_model, size=image_size)
+            progress.current_cost += self._client.last_cost
 
             cards.append(
                 GeneratedCard(

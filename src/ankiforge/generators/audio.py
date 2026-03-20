@@ -24,10 +24,17 @@ _SYSTEM_PROMPT = (
 class AudioGenerator:
     """Генератор QA+Audio карточек из списка вопросов."""
 
-    def __init__(self, client: OpenRouterClient, text_model: str, audio_model: str) -> None:
+    def __init__(
+        self,
+        client: OpenRouterClient,
+        text_model: str,
+        audio_model: str,
+        voice: str = "alloy",
+    ) -> None:
         self._client = client
         self._text_model = text_model
         self._audio_model = audio_model
+        self._voice = voice
 
     def generate(
         self,
@@ -50,11 +57,16 @@ class AudioGenerator:
         progress = GenerationProgress(total_cards=len(questions))
         cards: list[GeneratedCard] = []
 
-        for question in questions:
-            text_prompt = f"{_SYSTEM_PROMPT}\n\nQuestion: {question}"
-            answer = self._client.generate_text(text_prompt, self._text_model)
+        system_prompt = request.custom_prompt or _SYSTEM_PROMPT
+        voice = request.voice if request.voice != "alloy" else self._voice
 
-            audio_data = self._client.generate_audio(answer, self._audio_model)
+        for question in questions:
+            text_prompt = f"{system_prompt}\n\nQuestion: {question}"
+            answer = self._client.generate_text(text_prompt, self._text_model, temperature=0.3)
+            progress.current_cost += self._client.last_cost
+
+            audio_data = self._client.generate_audio(answer, self._audio_model, voice=voice)
+            progress.current_cost += self._client.last_cost
 
             cards.append(
                 GeneratedCard(

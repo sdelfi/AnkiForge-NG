@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from ankiforge.generators.audio import AudioGenerator
 
 from ankiforge.anki_bridge.note_types import QA_AUDIO_NOTE_TYPE_NAME
+from ankiforge.generators.audio import AudioGenerator
 from ankiforge.models import CardRequest, GenerationMode, GenerationProgress
 from ankiforge.openrouter.client import OpenRouterClient
 
@@ -22,6 +22,7 @@ def mock_client() -> MagicMock:
     client = MagicMock(spec=OpenRouterClient)
     client.generate_text.return_value = "Ответ от AI на вопрос"
     client.generate_audio.return_value = b"\xff\xfb\x90\x00fake_mp3_data"
+    client.last_cost = 0.0
     return client
 
 
@@ -237,3 +238,103 @@ class TestValidation:
         )
         with pytest.raises(ValueError, match="Не найдено вопросов"):
             generator.generate(request, MagicMock())
+
+
+# ---------------------------------------------------------------------------
+# Voice
+# ---------------------------------------------------------------------------
+
+
+class TestVoice:
+    def test_voice_from_constructor(self, mock_client: MagicMock) -> None:
+        gen = AudioGenerator(client=mock_client, text_model="m1", audio_model="m2", voice="nova")
+        request = CardRequest(
+            mode=GenerationMode.AUDIO,
+            input_text="Что такое ДНК?",
+            target_deck="Deck",
+        )
+        gen.generate(request, MagicMock())
+        call = mock_client.generate_audio.call_args
+        assert call.kwargs.get("voice") == "nova"
+
+    def test_voice_from_request_overrides(self, mock_client: MagicMock) -> None:
+        gen = AudioGenerator(client=mock_client, text_model="m1", audio_model="m2", voice="alloy")
+        request = CardRequest(
+            mode=GenerationMode.AUDIO,
+            input_text="Что такое ДНК?",
+            target_deck="Deck",
+            voice="echo",
+        )
+        gen.generate(request, MagicMock())
+        call = mock_client.generate_audio.call_args
+        assert call.kwargs.get("voice") == "echo"
+
+    def test_default_voice_alloy(self, generator: AudioGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.AUDIO,
+            input_text="Что такое ДНК?",
+            target_deck="Deck",
+        )
+        generator.generate(request, MagicMock())
+        call = mock_client.generate_audio.call_args
+        assert call.kwargs.get("voice") == "alloy"
+
+
+# ---------------------------------------------------------------------------
+# Custom prompt
+# ---------------------------------------------------------------------------
+
+
+class TestCostTracking:
+    def test_current_cost_accumulated(
+        self,
+        mock_client: MagicMock,
+    ) -> None:
+        """current_cost накапливается из client.last_cost после каждого вызова."""
+        mock_client.last_cost = 0.015
+        generator = AudioGenerator(client=mock_client, text_model="m1", audio_model="m2")
+        request = CardRequest(
+            mode=GenerationMode.AUDIO,
+            input_text="Q1\nQ2",
+            target_deck="Test",
+        )
+        costs: list[float] = []
+
+        def capture(progress: GenerationProgress) -> None:
+            costs.append(progress.current_cost)
+
+        generator.generate(request, capture)
+        # 2 карточки × (generate_text + generate_audio) × $0.015 = $0.06
+        assert len(costs) == 2
+        assert costs[-1] == pytest.approx(0.06, abs=0.001)
+
+
+class TestTemperature:
+    def test_generate_text_called_with_temperature_03(
+        self,
+        generator: AudioGenerator,
+        mock_client: MagicMock,
+    ) -> None:
+        """generate_text вызывается с temperature=0.3."""
+        request = CardRequest(
+            mode=GenerationMode.AUDIO,
+            input_text="Что такое ДНК?",
+            target_deck="Deck",
+        )
+        generator.generate(request, MagicMock())
+        call = mock_client.generate_text.call_args
+        assert call.kwargs.get("temperature") == 0.3
+
+
+class TestCustomPrompt:
+    def test_custom_prompt_replaces_default(self, generator: AudioGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.AUDIO,
+            input_text="Что такое ДНК?",
+            target_deck="Deck",
+            custom_prompt="Answer in Russian only.",
+        )
+        generator.generate(request, MagicMock())
+        prompt = mock_client.generate_text.call_args[0][0]
+        assert "Answer in Russian only." in prompt
+        assert "concise" not in prompt.lower()
