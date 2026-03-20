@@ -116,3 +116,4 @@ class AddonConfig:
     image_model_pricing: ModelPricingCache | None = None
     audio_model_pricing: ModelPricingCache | None = None
     cached_balance: float | None = None
+    cached_usage: float | None = None
