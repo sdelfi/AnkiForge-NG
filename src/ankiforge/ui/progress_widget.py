@@ -34,10 +34,10 @@ def _count_input_items(input_text: str, mode: GenerationMode, *, max_cards_per_p
     Args:
         input_text: Текст ввода.
         mode: Режим генерации.
-        max_cards_per_paragraph: Макс. карточек на абзац (для MATERIAL).
+        max_cards_per_paragraph: Макс. cards на абзац (для MATERIAL).
 
     Returns:
-        Ожидаемое количество карточек.
+        Ожидаемое количество cards.
     """
 
     text = input_text.strip()
@@ -109,7 +109,7 @@ def _estimate_and_format_cost(
     Args:
         client: OpenRouter клиент.
         mode: Режим генерации.
-        card_count: Количество карточек.
+        card_count: Количество cards.
         models: Список доступных моделей.
         text_model_id: ID текстовой модели.
         image_model_id: ID image модели.
@@ -129,7 +129,7 @@ def _estimate_and_format_cost(
         image_model=image_model,
         audio_model=audio_model,
     )
-    return f"Оценка стоимости: {_format_cost(cost)}"
+    return f"Estimate: {_format_cost(cost)}"
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ def _estimate_and_format_cost(
 
 
 class GenerationWorker:
-    """QThread-обёртка для фоновой генерации карточек.
+    """QThread-обёртка для фоновой генерации cards.
 
     Эмитит сигналы: progress_updated, finished, error.
     """
@@ -244,11 +244,11 @@ class ProgressWidget:
         """Показывает виджет с начальными данными.
 
         Args:
-            total_cards: Ожидаемое количество карточек.
+            total_cards: Ожидаемое количество cards.
         """
         self._progress_bar.setMaximum(total_cards)
         self._progress_bar.setValue(0)
-        self._progress_bar.setFormat(f"0/{total_cards} карточек")
+        self._progress_bar.setFormat(f"0/{total_cards} cards")
         self._widget.setVisible(True)
 
     def update_progress(self, progress: GenerationProgress) -> None:
@@ -260,7 +260,7 @@ class ProgressWidget:
         if progress.total_cards != self._progress_bar.maximum():
             self._progress_bar.setMaximum(progress.total_cards)
         self._progress_bar.setValue(progress.completed_cards)
-        self._progress_bar.setFormat(f"{progress.completed_cards}/{progress.total_cards} карточек")
+        self._progress_bar.setFormat(f"{progress.completed_cards}/{progress.total_cards} cards")
 
     def finish(self) -> None:
         """Финализирует виджет."""

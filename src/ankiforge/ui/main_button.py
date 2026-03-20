@@ -16,23 +16,23 @@ if TYPE_CHECKING:
 MODE_DESCRIPTIONS: dict[GenerationMode, dict[str, str]] = {
     GenerationMode.QUESTIONS: {
         "title": "Questions → Answers",
-        "subtitle": "Введите вопросы — AI сгенерирует ответы",
+        "subtitle": "Enter questions — AI generates answers",
     },
     GenerationMode.LANGUAGE: {
         "title": "Language Cards",
-        "subtitle": "Введите слова — получите definition, example, аудио и картинку",
+        "subtitle": "Enter words — get definition, example, audio and image",
     },
     GenerationMode.MATERIAL: {
         "title": "From Material",
-        "subtitle": "Вставьте текст — AI извлечёт факты и создаст карточки",
+        "subtitle": "Paste text — AI extracts facts and creates cards",
     },
     GenerationMode.IMAGE: {
         "title": "QA + Image",
-        "subtitle": "Вопросы с AI-сгенерированными иллюстрациями",
+        "subtitle": "Questions with AI-generated illustrations",
     },
     GenerationMode.AUDIO: {
         "title": "QA + Audio",
-        "subtitle": "Вопросы с аудио-озвучкой ответов",
+        "subtitle": "Questions with text-to-speech audio",
     },
 }
 
