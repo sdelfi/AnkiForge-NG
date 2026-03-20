@@ -226,6 +226,9 @@ class SettingsDialog:
             QPushButton,
             QVBoxLayout,
         )
+        from aqt.qt import (
+            QWidget as _QWidget,
+        )
 
         self._mw = mw
         self._models: list[Model] = []
@@ -235,9 +238,18 @@ class SettingsDialog:
         self._dialog.setMinimumWidth(560)
         self._dialog.setStyleSheet(DIALOG_QSS)
 
+        # Основной layout диалога: scroll + кнопки внизу
+        dialog_layout = QVBoxLayout()
+        dialog_layout.setContentsMargins(0, 0, 0, 0)
+        dialog_layout.setSpacing(0)
+        self._dialog.setLayout(dialog_layout)
+
+        # Содержимое внутри scroll area
+        content = _QWidget()
         layout = QVBoxLayout()
         layout.setSpacing(16)
-        self._dialog.setLayout(layout)
+        layout.setContentsMargins(14, 14, 14, 6)
+        content.setLayout(layout)
 
         # === Секция 1: Подключение к OpenRouter ===
         api_group = QGroupBox("OpenRouter Connection")
@@ -289,11 +301,11 @@ class SettingsDialog:
         balance_layout.setContentsMargins(8, 6, 8, 8)
 
         self._usage_label = QLabel("—")
-        self._usage_label.setStyleSheet("color: palette(mid);")
+        self._usage_label.setStyleSheet("color: palette(text);")
         balance_layout.addRow("Usage:", self._usage_label)
 
         self._remaining_label = QLabel("—")
-        self._remaining_label.setStyleSheet("color: palette(mid);")
+        self._remaining_label.setStyleSheet("color: palette(text);")
         balance_layout.addRow("Remaining:", self._remaining_label)
 
         refresh_balance_btn = QPushButton("Refresh")
@@ -303,11 +315,23 @@ class SettingsDialog:
         balance_group.setLayout(balance_layout)
         layout.addWidget(balance_group)
 
-        # === OK / Cancel ===
+        # Scroll area с содержимым
+        from ankiforge.ui.styles import get_dialog_size, wrap_in_scroll_area
+
+        dialog_layout.addWidget(wrap_in_scroll_area(content))
+
+        # === OK / Cancel (вне scroll, всегда видны) ===
+        btn_layout = QHBoxLayout()
+        btn_layout.setContentsMargins(14, 6, 14, 14)
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self._dialog.reject)
-        layout.addWidget(button_box)
+        btn_layout.addWidget(button_box)
+        dialog_layout.addLayout(btn_layout)
+
+        # Масштабируем под экран
+        w, h = get_dialog_size(width_pct=0.35, height_pct=0.55, min_w=560, min_h=400)
+        self._dialog.resize(w, h)
 
         # Загружаем текущие настройки
         self._load_current_config()
@@ -317,7 +341,9 @@ class SettingsDialog:
         config = get_config()
         self._api_key_input.setText(config.api_key)
 
-        # Показываем кэшированный баланс
+        # Показываем кэшированные значения
+        if config.cached_usage is not None:
+            self._usage_label.setText(f"${config.cached_usage:.2f}")
         if config.cached_balance is not None:
             self._remaining_label.setText(f"${config.cached_balance:.2f}")
 
@@ -398,6 +424,7 @@ class SettingsDialog:
 
             # Кэшируем в конфиг
             config = get_config()
+            config.cached_usage = usage
             config.cached_balance = remaining
             save_config(config)
         except Exception as e:  # noqa: BLE001

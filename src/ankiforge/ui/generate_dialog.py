@@ -657,12 +657,15 @@ class GenerateDialog:
         from aqt.qt import (
             QDialog,
             QFont,
+            QFrame,
             QHBoxLayout,
             QLabel,
             QPushButton,
-            QSizePolicy,
+            Qt,
             QVBoxLayout,
         )  # noqa: F811
+
+        from ankiforge.ui.styles import get_dialog_size, wrap_in_scroll_area
 
         self._mw = mw
         self._selected_mode: GenerationMode | None = None
@@ -672,9 +675,20 @@ class GenerateDialog:
         self._dialog.setMinimumWidth(480)
         self._dialog.setStyleSheet(DIALOG_QSS)
 
+        # Основной layout диалога: scroll + кнопки внизу
+        dialog_layout = QVBoxLayout()
+        dialog_layout.setContentsMargins(0, 0, 0, 0)
+        dialog_layout.setSpacing(0)
+        self._dialog.setLayout(dialog_layout)
+
+        # Содержимое внутри scroll area
+        from aqt.qt import QWidget as _QWidget
+
+        content = _QWidget()
         layout = QVBoxLayout()
-        layout.setSpacing(16)
-        self._dialog.setLayout(layout)
+        layout.setSpacing(10)
+        layout.setContentsMargins(14, 14, 14, 6)
+        content.setLayout(layout)
 
         # --- Заголовок ---
         title_label = QLabel("Choose generation mode")
@@ -684,12 +698,35 @@ class GenerateDialog:
         title_label.setFont(title_font)
         layout.addWidget(title_label)
 
-        # --- Кнопки режимов ---
+        # --- Кнопки режимов (вся строка кликабельная) ---
+        _row_qss = (
+            "QFrame#modeRow {"
+            "  border: 1px solid palette(mid);"
+            "  border-radius: 8px;"
+            "  background: transparent;"
+            "}"
+            "QFrame#modeRow:hover {"
+            "  border-color: palette(highlight);"
+            "  background-color: palette(midlight);"
+            "}"
+        )
+
         for mode in GenerationMode:
             info = _get_mode_info(mode)
+            handler = self._make_mode_handler(mode)
 
-            btn_layout = QHBoxLayout()
-            btn_layout.setSpacing(12)
+            row = QFrame()
+            row.setObjectName("modeRow")
+            row.setFrameShape(QFrame.Shape.StyledPanel)
+            row.setCursor(Qt.CursorShape.PointingHandCursor)
+            row.setStyleSheet(_row_qss)
+            # Делаем клик по всему row через mousePressEvent
+            row.mousePressEvent = lambda _event, h=handler: h()
+
+            row_layout = QHBoxLayout()
+            row_layout.setSpacing(12)
+            row_layout.setContentsMargins(12, 10, 12, 10)
+            row.setLayout(row_layout)
 
             # Иконка
             icon_label = QLabel(info["icon"])
@@ -697,7 +734,8 @@ class GenerateDialog:
             icon_font.setPointSize(24)
             icon_label.setFont(icon_font)
             icon_label.setFixedWidth(48)
-            btn_layout.addWidget(icon_label)
+            icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            row_layout.addWidget(icon_label)
 
             # Текст (title + subtitle)
             text_layout = QVBoxLayout()
@@ -706,34 +744,91 @@ class GenerateDialog:
             mode_title_font = QFont()
             mode_title_font.setBold(True)
             mode_title.setFont(mode_title_font)
+            mode_title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             text_layout.addWidget(mode_title)
 
             mode_subtitle = QLabel(info["subtitle"])
-            mode_subtitle.setStyleSheet("color: palette(mid);")
+            mode_subtitle.setStyleSheet("color: palette(text); font-size: 11px;")
+            mode_subtitle.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             text_layout.addWidget(mode_subtitle)
-            btn_layout.addLayout(text_layout)
+            row_layout.addLayout(text_layout)
 
-            # Кнопка выбора
-            select_btn = QPushButton("Select")
-            select_btn.setObjectName("selectBtn")
-            select_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-            select_btn.clicked.connect(self._make_mode_handler(mode))
-            btn_layout.addWidget(select_btn)
+            row_layout.addStretch()
 
-            layout.addLayout(btn_layout)
+            layout.addWidget(row)
 
         layout.addStretch()
 
-        # --- Настройки / Отмена ---
+        # Scroll area с содержимым
+        dialog_layout.addWidget(wrap_in_scroll_area(content))
+
+        # --- Настройки / Отмена (вне scroll, всегда видны) ---
         buttons_layout = QHBoxLayout()
+        buttons_layout.setContentsMargins(14, 6, 14, 14)
         settings_btn = QPushButton("Settings")
         settings_btn.clicked.connect(self._on_open_settings)
         buttons_layout.addWidget(settings_btn)
+
+        donate_btn = QPushButton("❤")
+        donate_btn.setFixedSize(28, 28)
+        donate_btn.setStyleSheet(
+            "QPushButton { color: #e74c3c; background: transparent; border: none;"
+            " font-size: 16px; }"
+            "QPushButton:hover { color: #ff6b6b; }"
+        )
+        donate_btn.setToolTip("Support the Project")
+        donate_btn.clicked.connect(self._on_donate)
+        buttons_layout.addWidget(donate_btn)
+
         buttons_layout.addStretch()
         cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(self._dialog.reject)
         buttons_layout.addWidget(cancel_btn)
-        layout.addLayout(buttons_layout)
+        dialog_layout.addLayout(buttons_layout)
+
+        # Масштабируем под экран
+        w, h = get_dialog_size(width_pct=0.35, height_pct=0.55, min_w=480, min_h=400)
+        self._dialog.resize(w, h)
+
+    def _on_donate(self) -> None:
+        """Показывает диалог с крипто-адресом для доната."""
+        from aqt.qt import QApplication, QDialog, QLabel, QPushButton, Qt, QVBoxLayout
+
+        address = "0x34f58CF2BE6073f12b2c3c6aE9f8c31983A3f5fE"
+
+        dlg = QDialog(self._dialog)
+        dlg.setWindowTitle("Support the Project")
+        dlg.setMinimumWidth(420)
+        lay = QVBoxLayout(dlg)
+        lay.setSpacing(12)
+        lay.setContentsMargins(20, 20, 20, 20)
+
+        info = QLabel(
+            "AnkiForge is a free, open-source project.\nIf you find it useful, consider supporting the development:"
+        )
+        info.setWordWrap(True)
+        lay.addWidget(info)
+
+        addr_label = QLabel(address)
+        addr_label.setStyleSheet(
+            "font-family: monospace; font-size: 13px; padding: 8px;"
+            " background: palette(base); border: 1px solid palette(mid);"
+            " border-radius: 4px;"
+        )
+        addr_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        lay.addWidget(addr_label)
+
+        networks = QLabel("Networks: Ethereum, Base, Arbitrum, Avalanche")
+        networks.setStyleSheet("color: gray; font-size: 12px;")
+        lay.addWidget(networks)
+
+        copy_btn = QPushButton("Copy Address")
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            copy_btn.clicked.connect(lambda: clipboard.setText(address))
+        lay.addWidget(copy_btn)
+
+        dlg.exec()
 
     def _on_open_settings(self) -> None:
         """Открывает диалог настроек."""
@@ -808,6 +903,11 @@ class InputDialog:
             Qt,
             QVBoxLayout,
         )
+        from aqt.qt import (
+            QWidget as _QWidget,
+        )
+
+        from ankiforge.ui.styles import get_dialog_size, wrap_in_scroll_area
 
         self._mw = mw
         self._mode = mode
@@ -819,10 +919,18 @@ class InputDialog:
         self._dialog.setMinimumWidth(520)
         self._dialog.setStyleSheet(DIALOG_QSS)
 
+        # Основной layout диалога: scroll + кнопки внизу
+        dialog_layout = QVBoxLayout()
+        dialog_layout.setContentsMargins(0, 0, 0, 0)
+        dialog_layout.setSpacing(0)
+        self._dialog.setLayout(dialog_layout)
+
+        # Содержимое внутри scroll area
+        content = _QWidget()
         layout = QVBoxLayout()
         layout.setSpacing(16)
-        layout.setContentsMargins(14, 14, 14, 14)
-        self._dialog.setLayout(layout)
+        layout.setContentsMargins(14, 14, 14, 6)
+        content.setLayout(layout)
 
         # --- Заголовок ---
         header = QLabel(info["title"])
@@ -833,7 +941,7 @@ class InputDialog:
         layout.addWidget(header)
 
         subtitle = QLabel(info["subtitle"])
-        subtitle.setStyleSheet("color: palette(mid);")
+        subtitle.setStyleSheet("color: palette(text); font-size: 11px;")
         layout.addWidget(subtitle)
 
         # === Секция 1: Данные для генерации ===
@@ -881,7 +989,7 @@ class InputDialog:
         settings_form.addRow("Deck:", self._deck_combo)
 
         deck_hint = QLabel("Pick an existing deck from the list, or type a new name to create one")
-        deck_hint.setStyleSheet("color: palette(mid); font-size: 11px;")
+        deck_hint.setStyleSheet("color: palette(text); font-size: 11px;")
         deck_hint.setWordWrap(True)
         settings_form.addRow("", deck_hint)
 
@@ -1090,7 +1198,7 @@ class InputDialog:
 
         # --- Единственная строка статуса/стоимости ---
         self._cost_label = QLabel("")
-        self._cost_label.setStyleSheet("color: palette(mid);")
+        self._cost_label.setStyleSheet("color: palette(text);")
         layout.addWidget(self._cost_label)
 
         # Обновляем оценку при изменении текста
@@ -1102,8 +1210,12 @@ class InputDialog:
 
         layout.addStretch()
 
-        # --- Кнопки нижней панели ---
+        # Scroll area с содержимым
+        dialog_layout.addWidget(wrap_in_scroll_area(content))
+
+        # --- Кнопки нижней панели (вне scroll, всегда видны) ---
         buttons_layout = QHBoxLayout()
+        buttons_layout.setContentsMargins(14, 6, 14, 14)
 
         self._back_btn = QPushButton("\u2190 Back")
         self._back_btn.clicked.connect(self._on_back)
@@ -1123,7 +1235,11 @@ class InputDialog:
         self._generate_btn.clicked.connect(self._on_generate)
         buttons_layout.addWidget(self._generate_btn)
 
-        layout.addLayout(buttons_layout)
+        dialog_layout.addLayout(buttons_layout)
+
+        # Масштабируем под экран
+        w, h = get_dialog_size(width_pct=0.4, height_pct=0.65, min_w=520, min_h=450)
+        self._dialog.resize(w, h)
 
         self._go_back = False
 
@@ -1236,7 +1352,7 @@ class InputDialog:
 
     def _update_cost_estimate(self) -> None:
         """Обновляет оценку стоимости из кэшированного pricing в конфиге."""
-        self._cost_label.setStyleSheet("color: palette(mid);")
+        self._cost_label.setStyleSheet("color: palette(text);")
         text = self._input_text.toPlainText()
         card_count = _count_input_items(text, self._mode, max_cards_per_paragraph=self._get_max_cards_per_paragraph())
         if card_count == 0:
@@ -1392,7 +1508,7 @@ class InputDialog:
         if cost_text:
             parts.append(f"spent: {cost_text}")
         self._cost_label.setText(" · ".join(parts))
-        self._cost_label.setStyleSheet("color: palette(mid);")
+        self._cost_label.setStyleSheet("color: palette(text);")
 
     def _on_generation_finished(self, cards: list[GeneratedCard]) -> None:
         """Обработка успешного завершения генерации."""

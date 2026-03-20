@@ -2,6 +2,56 @@
 
 from __future__ import annotations
 
+
+def get_dialog_size(
+    width_pct: float = 0.4,
+    height_pct: float = 0.6,
+    min_w: int = 480,
+    min_h: int = 400,
+) -> tuple[int, int]:
+    """Вычисляет размер диалога как процент от доступного экрана.
+
+    Args:
+        width_pct: Доля ширины экрана (0.0–1.0).
+        height_pct: Доля высоты экрана (0.0–1.0).
+        min_w: Минимальная ширина.
+        min_h: Минимальная высота.
+
+    Returns:
+        (width, height) в пикселях.
+    """
+    from aqt.qt import QApplication  # type: ignore[import-not-found]
+
+    screen = QApplication.primaryScreen()
+    if screen is not None:
+        geom = screen.availableGeometry()
+        w = max(int(geom.width() * width_pct), min_w)
+        h = max(int(geom.height() * height_pct), min_h)
+    else:
+        w, h = min_w, min_h
+    return w, h
+
+
+def wrap_in_scroll_area(content_widget: object) -> object:
+    """Оборачивает виджет в QScrollArea с вертикальной прокруткой.
+
+    Args:
+        content_widget: QWidget с содержимым диалога.
+
+    Returns:
+        QScrollArea, готовый для добавления в layout диалога.
+    """
+    from aqt.qt import QScrollArea, Qt
+
+    scroll = QScrollArea()
+    scroll.setWidget(content_widget)
+    scroll.setWidgetResizable(True)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+    return scroll
+
+
 DIALOG_QSS = """
 /* ── GroupBox ── */
 QGroupBox {
@@ -87,20 +137,6 @@ QPushButton#againBtn:hover {
     background-color: palette(mid);
 }
 
-/* ── Select button (mode chooser) ── */
-QPushButton#selectBtn {
-    background-color: palette(dark);
-    color: palette(text);
-    border: none;
-    border-radius: 4px;
-    padding: 6px 18px;
-    font-weight: bold;
-}
-QPushButton#selectBtn:hover {
-    background-color: palette(highlight);
-    color: palette(highlighted-text);
-}
-
 /* ── Generic button hover ── */
 QPushButton:hover {
     border-color: palette(highlight);
@@ -143,21 +179,36 @@ QLabel#statusError {
 def make_help_icon(tooltip_text: str) -> object:
     """Create a small circled '?' label with a tooltip.
 
+    Shows tooltip on both hover and click for better discoverability.
+
     Args:
-        tooltip_text: Text shown on hover.
+        tooltip_text: Text shown on hover/click.
 
     Returns:
         QLabel instance with the help icon.
     """
-    from aqt.qt import QLabel  # type: ignore[import-not-found]
+    from aqt.qt import QCursor, QEvent, QLabel, QObject, Qt, QToolTip
+
+    class _HelpFilter(QObject):  # type: ignore[misc]
+        """Event filter that shows tooltip on mouse click."""
+
+        def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # noqa: N802
+            if event.type() == QEvent.Type.MouseButtonRelease:
+                QToolTip.showText(QCursor.pos(), obj.toolTip(), obj)
+                return True
+            result: bool = super().eventFilter(obj, event)
+            return result
 
     label = QLabel("?")
     label.setFixedSize(18, 18)
+    label.setCursor(Qt.CursorShape.PointingHandCursor)
     label.setToolTip(tooltip_text)
+    help_filter = _HelpFilter(label)
+    label.installEventFilter(help_filter)
     label.setStyleSheet(
         "QLabel {"
-        "  color: palette(mid);"
-        "  border: 1px solid palette(mid);"
+        "  color: palette(text);"
+        "  border: 1px solid palette(text);"
         "  border-radius: 9px;"
         "  font-size: 11px;"
         "  font-weight: bold;"
