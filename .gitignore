@@ -16,3 +16,6 @@ htmlcov/
 
 # IDE
 .ralph/
+
+# Anki runtime (содержит API-ключи)
+src/ankiforge/meta.json
