@@ -63,11 +63,11 @@ class TestParseQuestions:
         assert result == ["Вопрос 1", "Вопрос 2"]
 
     def test_empty_input_raises(self, generator: ImageGenerator) -> None:
-        with pytest.raises(ValueError, match="Не найдено вопросов"):
+        with pytest.raises(ValueError, match="No questions found"):
             generator._parse_questions("")
 
     def test_whitespace_only_raises(self, generator: ImageGenerator) -> None:
-        with pytest.raises(ValueError, match="Не найдено вопросов"):
+        with pytest.raises(ValueError, match="No questions found"):
             generator._parse_questions("   \n  \n  ")
 
 
@@ -236,7 +236,7 @@ class TestValidation:
             input_text="",
             target_deck="Deck",
         )
-        with pytest.raises(ValueError, match="Не найдено вопросов"):
+        with pytest.raises(ValueError, match="No questions found"):
             generator.generate(request, MagicMock())
 
 

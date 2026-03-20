@@ -155,7 +155,7 @@ class TestFetchModels:
         resp.json.side_effect = ValueError("Invalid JSON")
         mock_get.return_value = resp
         client = OpenRouterClient(api_key=API_KEY)
-        with pytest.raises(OpenRouterError, match="парсинг|JSON"):
+        with pytest.raises(OpenRouterError, match="Failed to parse JSON"):
             client.fetch_models()
 
 

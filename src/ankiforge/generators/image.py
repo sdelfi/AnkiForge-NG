@@ -105,6 +105,6 @@ class ImageGenerator:
         """
         questions = [line.strip() for line in text.splitlines() if line.strip()]
         if not questions:
-            msg = "Не найдено вопросов во входном тексте"
+            msg = "No questions found in input"
             raise ValueError(msg)
         return questions
