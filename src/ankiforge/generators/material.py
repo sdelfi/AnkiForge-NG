@@ -223,10 +223,11 @@ class MaterialGenerator:
             image_data: bytes | None = None
             if use_images:
                 image_prompt = _IMAGE_PROMPT_TEMPLATE.format(topic=question)
+                assert self._image_model is not None
                 image_data = self._client.generate_image(
                     image_prompt,
                     self._image_model,
-                    size=image_size,  # type: ignore[arg-type]
+                    size=image_size,
                 )
                 progress.current_cost += self._client.last_cost
                 progress_callback(progress)
@@ -268,10 +269,11 @@ class MaterialGenerator:
             image_data: bytes | None = None
             if use_images:
                 image_prompt = _IMAGE_PROMPT_TEMPLATE.format(topic=question)
+                assert self._image_model is not None
                 image_data = self._client.generate_image(
                     image_prompt,
                     self._image_model,
-                    size=image_size,  # type: ignore[arg-type]
+                    size=image_size,
                 )
                 progress.current_cost += self._client.last_cost
 

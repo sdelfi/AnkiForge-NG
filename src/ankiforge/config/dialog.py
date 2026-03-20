@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
     from aqt.qt import QComboBox, QLabel  # type: ignore[import-not-found]
 
+    from ankiforge.models import ModelPricingCache
+
 
 # ---------------------------------------------------------------------------
 # QSS — минимальный стиль, palette-friendly (работает и в dark, и в light)
@@ -58,7 +60,7 @@ def _filter_models_by_modality(models: list[Model], modality: Modality) -> list[
     return [m for m in models if modality in m.modalities]
 
 
-def _extract_pricing(model_id: str, models: list[Model]) -> object:
+def _extract_pricing(model_id: str, models: list[Model]) -> ModelPricingCache | None:
     """Извлекает pricing модели по ID.
 
     Args:
@@ -124,7 +126,7 @@ def _make_searchable_combo() -> QComboBox:
     Returns:
         Editable QComboBox с QCompleter (MatchContains, CaseInsensitive).
     """
-    from aqt.qt import QComboBox, QCompleter, Qt  # type: ignore[import-not-found]
+    from aqt.qt import QComboBox, QCompleter, Qt
 
     combo = QComboBox()
     combo.setEditable(True)
@@ -182,7 +184,7 @@ def _get_selected_model_id(combo: QComboBox) -> str:
         return str(data)
 
     # Кастомный ввод — пользователь набрал текст руками
-    text = combo.currentText().strip()
+    text = str(combo.currentText()).strip()
     if not text or text == "— not selected —":
         return ""
 
@@ -474,7 +476,7 @@ class SettingsDialog:
         # Валидация кастомных моделей
         error = self._validate_custom_models()
         if error:
-            from aqt.qt import QMessageBox  # type: ignore[import-not-found]
+            from aqt.qt import QMessageBox
 
             QMessageBox.warning(self._dialog, "Model Error", error)
             return

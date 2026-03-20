@@ -43,7 +43,11 @@ class TestCountInputItems:
         from ankiforge.ui.progress_widget import _count_input_items
 
         # 3 коротких абзаца мержатся в 1 чанк → 1 × 3 = 3
-        text = "Абзац первый — достаточно длинный.\n\nАбзац второй — достаточно длинный.\n\nАбзац третий — достаточно длинный."
+        text = (
+            "Абзац первый — достаточно длинный.\n\n"
+            "Абзац второй — достаточно длинный.\n\n"
+            "Абзац третий — достаточно длинный."
+        )
         count = _count_input_items(text, GenerationMode.MATERIAL)
         assert count == 3
 

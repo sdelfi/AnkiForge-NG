@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
+    from aqt.qt import QComboBox, QLabel, QSpinBox  # type: ignore[import-not-found]
 
     from ankiforge.models import LanguageOptions
     from ankiforge.openrouter.client import OpenRouterClient
@@ -727,7 +728,7 @@ class GenerateDialog:
         Args:
             mw: Главное окно Anki.
         """
-        from aqt.qt import (  # type: ignore[import-not-found]
+        from aqt.qt import (
             QDialog,
             QFont,
             QHBoxLayout,
@@ -982,8 +983,9 @@ class InputDialog:
         # === Секция 2.5: Опции генерации ===
         self._lang_options_checkboxes: dict[str, QCheckBox] = {}
         self._image_size_combo: QComboBox | None = None
+        self._image_size_label: QLabel | None = None
         self._voice_combo: QComboBox | None = None
-        self._max_cards_spin: object | None = None  # QSpinBox, typed as object to avoid import
+        self._max_cards_spin: QSpinBox | None = None
         self._answer_detail_combo: QComboBox | None = None
 
         if mode == GenerationMode.LANGUAGE:
@@ -1055,8 +1057,10 @@ class InputDialog:
             # Показывать image_size + label когда включены картинки
             def _toggle_image_size(state: int) -> None:
                 visible = bool(state)
-                self._image_size_combo.setVisible(visible)
-                self._image_size_label.setVisible(visible)
+                if self._image_size_combo is not None:
+                    self._image_size_combo.setVisible(visible)
+                if self._image_size_label is not None:
+                    self._image_size_label.setVisible(visible)
 
             self._images_checkbox.stateChanged.connect(_toggle_image_size)
 
@@ -1163,7 +1167,7 @@ class InputDialog:
 
         max_cards = 3
         if self._max_cards_spin is not None:
-            max_cards = self._max_cards_spin.value()  # type: ignore[union-attr]
+            max_cards = self._max_cards_spin.value()
 
         include_images = self._images_checkbox.isChecked()
         image_size = "auto"
@@ -1182,7 +1186,7 @@ class InputDialog:
             answer_detail=answer_detail,
         )
 
-    def _create_voice_combo(self) -> object:
+    def _create_voice_combo(self) -> QComboBox:
         """Создаёт комбобокс выбора голоса диктора."""
         from aqt.qt import QComboBox
 
@@ -1200,7 +1204,7 @@ class InputDialog:
         combo.addItem("Verse (male, expressive)", "verse")
         return combo
 
-    def _create_image_size_combo(self) -> object:
+    def _create_image_size_combo(self) -> QComboBox:
         """Создаёт комбобокс выбора размера изображения."""
         from aqt.qt import QComboBox
 
@@ -1239,7 +1243,7 @@ class InputDialog:
             image_size = self._image_size_combo.currentData() or "auto"
 
         voice = "alloy"
-        if hasattr(self, "_voice_combo"):
+        if self._voice_combo is not None:
             voice = self._voice_combo.currentData() or "alloy"
 
         return LanguageOptions(
@@ -1256,7 +1260,7 @@ class InputDialog:
     def _get_max_cards_per_paragraph(self) -> int:
         """Возвращает текущее значение max_cards_per_paragraph из спинбокса."""
         if self._max_cards_spin is not None:
-            return self._max_cards_spin.value()  # type: ignore[union-attr]
+            return int(self._max_cards_spin.value())
         return 3
 
     def _update_cost_estimate(self) -> None:
@@ -1503,5 +1507,5 @@ class InputDialog:
         Returns:
             True если пользователь нажал Назад (для возврата к выбору режима).
         """
-        self._dialog.exec()  # type: ignore[no-untyped-call]
+        self._dialog.exec()
         return self._go_back

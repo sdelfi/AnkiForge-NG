@@ -84,10 +84,10 @@ def _on_deck_browser_content(deck_browser: object, content: object) -> None:  # 
     """Добавляет кнопку AnkiForge в нижнюю панель DeckBrowser."""
     # drawLinks — атрибут DeckBrowser, не DeckBrowserContent
     # Формат: [shortcut, command, label]
-    for link in deck_browser.drawLinks:  # type: ignore[union-attr]
+    for link in deck_browser.drawLinks:  # type: ignore[attr-defined]
         if link[1] == _ANKIFORGE_CMD:
             return  # уже добавлена
-    deck_browser.drawLinks.append(["", _ANKIFORGE_CMD, "Generate Cards"])  # type: ignore[union-attr]
+    deck_browser.drawLinks.append(["", _ANKIFORGE_CMD, "Generate Cards"])  # type: ignore[attr-defined]
 
 
 def _on_js_message(

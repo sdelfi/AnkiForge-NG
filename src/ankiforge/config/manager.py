@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import requests
 
-from ankiforge.models import AddonConfig
+from ankiforge.models import AddonConfig, ModelPricingCache
 
 if TYPE_CHECKING:
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
@@ -42,10 +42,8 @@ def _fallback_config_path() -> Path:
     return Path(__file__).parent.parent / "config.json"
 
 
-def _parse_pricing(data: object) -> object:
+def _parse_pricing(data: object) -> ModelPricingCache | None:
     """Парсит pricing из словаря конфига."""
-    from ankiforge.models import ModelPricingCache
-
     if not isinstance(data, dict):
         return None
     return ModelPricingCache(
@@ -63,7 +61,11 @@ def _dict_to_config(data: dict[str, object] | None) -> AddonConfig:
 
     defaults = AddonConfig()
     cached_balance_raw = data.get("cached_balance")
-    cached_balance = float(cached_balance_raw) if cached_balance_raw is not None else None
+    cached_balance = (
+        float(cached_balance_raw)  # type: ignore[arg-type]
+        if cached_balance_raw is not None
+        else None
+    )
     return AddonConfig(
         api_key=str(data.get("api_key", defaults.api_key)),
         text_model=str(data.get("text_model", defaults.text_model)),
