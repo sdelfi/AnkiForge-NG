@@ -129,7 +129,7 @@ def _make_searchable_combo() -> QComboBox:
     combo = QComboBox()
     combo.setEditable(True)
     combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-    combo.lineEdit().setPlaceholderText("Начните вводить название модели...")
+    combo.lineEdit().setPlaceholderText("Start typing a model name...")
 
     completer = QCompleter()
     completer.setFilterMode(Qt.MatchFlag.MatchContains)
@@ -149,7 +149,7 @@ def _populate_model_combo(combo: QComboBox, models: list[Model], current_id: str
         current_id: ID текущей выбранной модели.
     """
     combo.clear()
-    combo.addItem("— не выбрано —", "")
+    combo.addItem("— not selected —", "")
 
     selected_index = -1
     for i, model in enumerate(models):
@@ -183,7 +183,7 @@ def _get_selected_model_id(combo: QComboBox) -> str:
 
     # Кастомный ввод — пользователь набрал текст руками
     text = combo.currentText().strip()
-    if not text or text == "— не выбрано —":
+    if not text or text == "— not selected —":
         return ""
 
     # Текст может быть в формате "ModelName (provider/model-id)" — извлекаем ID из скобок
@@ -217,7 +217,7 @@ def _validate_api_key_action(api_key: str) -> tuple[bool, str | None]:
         Кортеж (is_valid, error_message).
     """
     if not api_key or not api_key.strip():
-        return False, "API-ключ пуст"
+        return False, "API key is empty"
     return validate_api_key(api_key.strip())
 
 
@@ -264,7 +264,7 @@ class SettingsDialog:
         self._dialog.setLayout(layout)
 
         # === Секция 1: Подключение к OpenRouter ===
-        api_group = QGroupBox("Подключение к OpenRouter")
+        api_group = QGroupBox("OpenRouter Connection")
         api_layout = QFormLayout()
         api_layout.setSpacing(8)
         api_group.setLayout(api_layout)
@@ -276,12 +276,12 @@ class SettingsDialog:
         self._api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         api_key_row.addWidget(self._api_key_input)
 
-        connect_btn = QPushButton("Подключиться")
+        connect_btn = QPushButton("Connect")
         connect_btn.setObjectName("connectBtn")
         connect_btn.clicked.connect(self._on_connect)
         api_key_row.addWidget(connect_btn)
 
-        api_layout.addRow("API-ключ:", api_key_row)
+        api_layout.addRow("API Key:", api_key_row)
 
         self._api_status_label = QLabel("")
         self._api_status_label.setWordWrap(True)
@@ -290,37 +290,37 @@ class SettingsDialog:
         layout.addWidget(api_group)
 
         # === Секция 2: Модели ===
-        models_group = QGroupBox("Модели")
+        models_group = QGroupBox("Models")
         models_layout = QFormLayout()
         models_layout.setSpacing(8)
         models_group.setLayout(models_layout)
 
         self._text_model_combo = _make_searchable_combo()
-        models_layout.addRow("Текстовая модель:", self._text_model_combo)
+        models_layout.addRow("Text model:", self._text_model_combo)
 
         self._image_model_combo = _make_searchable_combo()
-        models_layout.addRow("Image модель:", self._image_model_combo)
+        models_layout.addRow("Image model:", self._image_model_combo)
 
         self._audio_model_combo = _make_searchable_combo()
-        models_layout.addRow("Audio модель:", self._audio_model_combo)
+        models_layout.addRow("Audio model:", self._audio_model_combo)
 
         layout.addWidget(models_group)
 
         # === Секция 3: Баланс ===
-        balance_group = QGroupBox("Баланс")
+        balance_group = QGroupBox("Balance")
         balance_layout = QFormLayout()
         balance_layout.setSpacing(4)
         balance_layout.setContentsMargins(8, 6, 8, 8)
 
         self._usage_label = QLabel("—")
         self._usage_label.setStyleSheet("color: #999999;")
-        balance_layout.addRow("Использовано:", self._usage_label)
+        balance_layout.addRow("Usage:", self._usage_label)
 
         self._remaining_label = QLabel("—")
         self._remaining_label.setStyleSheet("color: #999999;")
-        balance_layout.addRow("Остаток:", self._remaining_label)
+        balance_layout.addRow("Remaining:", self._remaining_label)
 
-        refresh_balance_btn = QPushButton("Обновить")
+        refresh_balance_btn = QPushButton("Refresh")
         refresh_balance_btn.clicked.connect(self._on_refresh_balance)
         balance_layout.addRow("", refresh_balance_btn)
 
@@ -358,7 +358,7 @@ class SettingsDialog:
             self._models = client.fetch_models()
             self._populate_combos(config)
             count = len(self._models)
-            _set_status(self._api_status_label, f"Подключено, загружено {count} моделей", ok=True)
+            _set_status(self._api_status_label, f"Connected, loaded {count} models", ok=True)
         except Exception:  # noqa: BLE001
             pass
 
@@ -378,14 +378,14 @@ class SettingsDialog:
         is_valid, error = _validate_api_key_action(api_key)
 
         if not is_valid:
-            _set_status(self._api_status_label, f"Ошибка: {error}", ok=False)
+            _set_status(self._api_status_label, f"Error: {error}", ok=False)
             return
 
         # Ключ валиден — сразу грузим модели
         try:
             from ankiforge.openrouter.client import OpenRouterClient
 
-            _set_status(self._api_status_label, "Загрузка моделей...", ok=True)
+            _set_status(self._api_status_label, "Loading models...", ok=True)
             client = OpenRouterClient(api_key=api_key)
             self._models = client.fetch_models()
 
@@ -393,20 +393,20 @@ class SettingsDialog:
             self._populate_combos(config)
 
             count = len(self._models)
-            _set_status(self._api_status_label, f"Подключено, загружено {count} моделей", ok=True)
+            _set_status(self._api_status_label, f"Connected, loaded {count} models", ok=True)
         except Exception as e:  # noqa: BLE001
-            _set_status(self._api_status_label, f"Ошибка загрузки моделей: {e}", ok=False)
+            _set_status(self._api_status_label, f"Failed to load models: {e}", ok=False)
 
     def _on_refresh_balance(self) -> None:
         """Запрашивает баланс из OpenRouter API и обновляет UI + кэш."""
         api_key = self._api_key_input.text().strip()
         if not api_key:
-            self._usage_label.setText("нет API-ключа")
-            self._remaining_label.setText("нет API-ключа")
+            self._usage_label.setText("no API key")
+            self._remaining_label.setText("no API key")
             return
 
-        self._usage_label.setText("загрузка...")
-        self._remaining_label.setText("загрузка...")
+        self._usage_label.setText("loading...")
+        self._remaining_label.setText("loading...")
         try:
             from ankiforge.openrouter.client import OpenRouterClient
 
@@ -416,7 +416,7 @@ class SettingsDialog:
             remaining = balance["remaining"]
             self._usage_label.setText(f"${usage:.2f}")
             if remaining < 0:
-                self._remaining_label.setText("неизвестно (безлимитный ключ)")
+                self._remaining_label.setText("unknown (unlimited key)")
             else:
                 self._remaining_label.setText(f"${remaining:.2f}")
 
@@ -425,7 +425,7 @@ class SettingsDialog:
             config.cached_balance = remaining
             save_config(config)
         except Exception as e:  # noqa: BLE001
-            self._usage_label.setText(f"ошибка ({e})")
+            self._usage_label.setText(f"error ({e})")
             self._remaining_label.setText("—")
 
     def _validate_custom_models(self) -> str | None:
@@ -435,7 +435,7 @@ class SettingsDialog:
             Сообщение об ошибке или None если всё ок.
         """
         combos = {
-            "Текстовая": self._text_model_combo,
+            "Text": self._text_model_combo,
             "Image": self._image_model_combo,
             "Audio": self._audio_model_combo,
         }
@@ -449,7 +449,7 @@ class SettingsDialog:
             # Кастомная модель — проверяем существование через API
             api_key = self._api_key_input.text().strip()
             if not api_key:
-                return f"{label} модель «{model_id}» не найдена в списке, а API-ключ не указан"
+                return f"{label} model '{model_id}' not found in the list, and no API key provided"
 
             try:
                 from ankiforge.openrouter.client import OpenRouterClient
@@ -460,12 +460,12 @@ class SettingsDialog:
                 all_models = client.fetch_models()
                 found = next((m for m in all_models if m.id == model_id), None)
                 if found is None:
-                    return f"{label} модель «{model_id}» не найдена на OpenRouter"
+                    return f"{label} model '{model_id}' not found on OpenRouter"
                 # Добавляем найденную модель в локальный кэш
                 if found not in self._models:
                     self._models.append(found)
             except Exception as e:  # noqa: BLE001
-                return f"Ошибка проверки модели «{model_id}»: {e}"
+                return f"Error validating model '{model_id}': {e}"
 
         return None
 
@@ -476,7 +476,7 @@ class SettingsDialog:
         if error:
             from aqt.qt import QMessageBox  # type: ignore[import-not-found]
 
-            QMessageBox.warning(self._dialog, "Ошибка модели", error)
+            QMessageBox.warning(self._dialog, "Model Error", error)
             return
 
         config = _build_config_from_dialog_state(

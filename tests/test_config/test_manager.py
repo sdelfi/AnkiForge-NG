@@ -179,7 +179,7 @@ class TestValidateApiKey:
         is_valid, error = validate_api_key("")
         assert is_valid is False
         assert error is not None
-        assert "пуст" in error.lower()
+        assert "empty" in error.lower()
 
     def test_invalid_prefix_returns_false(self) -> None:
         is_valid, error = validate_api_key("invalid-key-format")

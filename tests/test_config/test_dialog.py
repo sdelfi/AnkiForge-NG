@@ -281,7 +281,7 @@ class TestGetSelectedModelId:
 
         combo = MagicMock()
         combo.currentData.return_value = None
-        combo.currentText.return_value = "— не выбрано —"
+        combo.currentText.return_value = "— not selected —"
         assert _get_selected_model_id(combo) == ""
 
     def test_extracts_id_from_display_format(self) -> None:
@@ -367,14 +367,14 @@ class TestDialogValidateKey:
     def test_validate_returns_error(self) -> None:
         with patch(
             "ankiforge.config.dialog.validate_api_key",
-            return_value=(False, "Невалидный API-ключ"),
+            return_value=(False, "Invalid API key"),
         ):
             from ankiforge.config.dialog import _validate_api_key_action
 
             is_valid, error = _validate_api_key_action("sk-or-invalid")
 
         assert is_valid is False
-        assert error == "Невалидный API-ключ"
+        assert error == "Invalid API key"
 
 
 # ---------------------------------------------------------------------------

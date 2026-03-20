@@ -27,11 +27,11 @@ def _get_mw() -> AnkiQt:
     try:
         from aqt import mw  # type: ignore[import-not-found]
     except ImportError as e:
-        msg = "Anki runtime недоступен"
+        msg = "Anki runtime is not available"
         raise RuntimeError(msg) from e
 
     if mw is None:
-        msg = "Главное окно Anki не инициализировано"
+        msg = "Anki main window is not initialized"
         raise RuntimeError(msg)
 
     return mw
@@ -150,10 +150,10 @@ def validate_api_key(api_key: str) -> tuple[bool, str | None]:
         Кортеж (is_valid, error_message). Если валидный — (True, None).
     """
     if not api_key or not api_key.strip():
-        return False, "API-ключ пуст"
+        return False, "API key is empty"
 
     if not api_key.startswith("sk-or-"):
-        return False, "API-ключ должен начинаться с 'sk-or-'"
+        return False, "API key must start with 'sk-or-'"
 
     # Проверяем ключ запросом к OpenRouter
     try:
@@ -163,12 +163,12 @@ def validate_api_key(api_key: str) -> tuple[bool, str | None]:
             timeout=10,
         )
     except Exception as e:  # noqa: BLE001
-        return False, f"Ошибка сети: {e}"
+        return False, f"Network error: {e}"
 
     if resp.status_code == 200:
         return True, None
 
     if resp.status_code == 401:
-        return False, "Невалидный API-ключ"
+        return False, "Invalid API key"
 
-    return False, f"Неожиданный ответ: {resp.status_code}"
+    return False, f"Unexpected response: {resp.status_code}"
