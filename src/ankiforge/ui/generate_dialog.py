@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
-    from aqt.qt import QComboBox, QLabel, QSpinBox  # type: ignore[import-not-found]
+    from aqt.qt import QComboBox, QSpinBox, QWidget  # type: ignore[import-not-found]
 
     from ankiforge.models import LanguageOptions
     from ankiforge.openrouter.client import OpenRouterClient
@@ -326,6 +326,30 @@ def _get_default_custom_prompt(mode: GenerationMode = GenerationMode.LANGUAGE) -
         return f"--- Extract phase ---\n{_EXTRACT_PROMPT}\n\n--- Generate phase ---\n{_GENERATE_PROMPT}"
 
     return ""
+
+
+def _add_help_icon(widget: object, tooltip: str) -> QWidget:
+    """Wraps a widget with a help icon in a horizontal layout.
+
+    Args:
+        widget: Any QWidget (QLabel, QCheckBox, etc.).
+        tooltip: Tooltip text for the help icon.
+
+    Returns:
+        QWidget containing the original widget and a help icon.
+    """
+    from aqt.qt import QHBoxLayout, QWidget
+
+    from ankiforge.ui.styles import make_help_icon
+
+    w = QWidget()
+    h = QHBoxLayout(w)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(4)
+    h.addWidget(widget)
+    h.addWidget(make_help_icon(tooltip))
+    h.addStretch()
+    return w
 
 
 # ---------------------------------------------------------------------------
@@ -888,7 +912,7 @@ class InputDialog:
         # === Секция 2.5: Опции генерации ===
         self._lang_options_checkboxes: dict[str, QCheckBox] = {}
         self._image_size_combo: QComboBox | None = None
-        self._image_size_label: QLabel | None = None
+        self._image_size_label: QWidget | None = None
         self._voice_combo: QComboBox | None = None
         self._max_cards_spin: QSpinBox | None = None
         self._answer_detail_combo: QComboBox | None = None
@@ -909,20 +933,35 @@ class InputDialog:
                 ("include_transcription", "Phonetic transcription (IPA)"),
                 ("detailed_image", "Detailed image (HD prompt)"),
             ]
+            _cb_tooltips: dict[str, str] = {
+                "detailed_image": "Uses a richer prompt for higher quality images. Costs more per image",
+            }
             for key, label in checkbox_defs:
                 cb = QCheckBox(label)
                 cb.setChecked(key not in ("detailed_image",))
                 cb.stateChanged.connect(self._update_cost_estimate)
                 self._lang_options_checkboxes[key] = cb
-                opts_form.addRow(cb)
+                tip = _cb_tooltips.get(key)
+                if tip:
+                    opts_form.addRow(_add_help_icon(cb, tip))
+                else:
+                    opts_form.addRow(cb)
 
             # Голос диктора
             self._voice_combo = self._create_voice_combo()
-            opts_form.addRow("Voice:", self._voice_combo)
+            opts_form.addRow(
+                _add_help_icon(QLabel("Voice:"), "Text-to-speech voice used for audio generation"),
+                self._voice_combo,
+            )
 
             # Размер изображения
             self._image_size_combo = self._create_image_size_combo()
-            opts_form.addRow("Image size:", self._image_size_combo)
+            opts_form.addRow(
+                _add_help_icon(
+                    QLabel("Image size:"), "Larger images cost more. 0.5K is usually sufficient for flashcards"
+                ),
+                self._image_size_combo,
+            )
 
             opts_group.setLayout(opts_form)
             layout.addWidget(opts_group)
@@ -942,20 +981,32 @@ class InputDialog:
             self._max_cards_spin.setMaximum(5)
             self._max_cards_spin.setValue(1)
             self._max_cards_spin.valueChanged.connect(lambda _: self._update_cost_estimate())
-            opts_form.addRow("Max cards per paragraph:", self._max_cards_spin)
+            opts_form.addRow(
+                _add_help_icon(
+                    QLabel("Max cards per paragraph:"),
+                    "Maximum number of Q&A cards generated from each paragraph of the source text",
+                ),
+                self._max_cards_spin,
+            )
 
             self._answer_detail_combo = QComboBox()
             self._answer_detail_combo.addItem("Short (1-2 sentences)", AnswerDetail.SHORT.value)
             self._answer_detail_combo.addItem("Medium (2-4 sentences)", AnswerDetail.MEDIUM.value)
             self._answer_detail_combo.addItem("Detailed (comprehensive)", AnswerDetail.DETAILED.value)
-            opts_form.addRow("Answer detail:", self._answer_detail_combo)
+            opts_form.addRow(
+                _add_help_icon(QLabel("Answer detail:"), "Controls the length and depth of generated answers"),
+                self._answer_detail_combo,
+            )
 
             # Чекбокс картинок
             opts_form.addRow(self._images_checkbox)
 
             self._image_size_combo = self._create_image_size_combo()
             self._image_size_combo.setVisible(False)
-            self._image_size_label = QLabel("Image size:")
+            self._image_size_label = _add_help_icon(
+                QLabel("Image size:"),
+                "Larger images cost more. 0.5K is usually sufficient for flashcards",
+            )
             self._image_size_label.setVisible(False)
             opts_form.addRow(self._image_size_label, self._image_size_combo)
 
@@ -981,7 +1032,12 @@ class InputDialog:
             opts_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
             self._image_size_combo = self._create_image_size_combo()
-            opts_form.addRow("Image size:", self._image_size_combo)
+            opts_form.addRow(
+                _add_help_icon(
+                    QLabel("Image size:"), "Larger images cost more. 0.5K is usually sufficient for flashcards"
+                ),
+                self._image_size_combo,
+            )
 
             opts_group.setLayout(opts_form)
             layout.addWidget(opts_group)
@@ -995,7 +1051,10 @@ class InputDialog:
             opts_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
             self._voice_combo = self._create_voice_combo()
-            opts_form.addRow("Voice:", self._voice_combo)
+            opts_form.addRow(
+                _add_help_icon(QLabel("Voice:"), "Text-to-speech voice used for audio generation"),
+                self._voice_combo,
+            )
 
             opts_group.setLayout(opts_form)
             layout.addWidget(opts_group)
@@ -1007,6 +1066,13 @@ class InputDialog:
             prompt_group.setChecked(False)
             prompt_vlayout = QVBoxLayout()
             prompt_vlayout.setContentsMargins(8, 6, 8, 8)
+
+            prompt_vlayout.addWidget(
+                _add_help_icon(
+                    QLabel(""),
+                    "Override the default AI prompt. Leave empty to use the built-in prompt optimized for this mode",
+                )
+            )
 
             self._custom_prompt_input = QPlainTextEdit()
             self._custom_prompt_input.setPlaceholderText(_get_default_custom_prompt(mode))
