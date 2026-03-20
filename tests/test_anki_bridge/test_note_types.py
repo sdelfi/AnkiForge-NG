@@ -313,7 +313,7 @@ class TestEnsureLanguageNoteTypeCreatesNew:
             result = ensure_language_note_type()
 
         css = result["css"]
-        assert "300px" in css
+        assert "320px" in css
 
     def test_image_has_rounded_corners(self, language_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
@@ -475,7 +475,7 @@ class TestEnsureQaImageNoteTypeCreatesNew:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
             result = ensure_qa_image_note_type()
 
-        assert "300px" in result["css"]
+        assert "320px" in result["css"]
 
     def test_image_has_rounded_corners(self, qa_image_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):

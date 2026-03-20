@@ -22,22 +22,122 @@ _HLJS_SCRIPT = (
     "<script>hljs.highlightAll();</script>"
 )
 
-# CSS для code blocks — общий для всех note types
-_CODE_CSS = """
-/* Code blocks */
+# ---------------------------------------------------------------------------
+# Design tokens & shared CSS
+# ---------------------------------------------------------------------------
+
+_BASE_CSS = """\
+/* ── Design tokens ── */
+:root {
+  --af-text-primary: #1a1a2e;
+  --af-text-secondary: #6b7280;
+  --af-text-muted: #9ca3af;
+  --af-border: #e5e7eb;
+  --af-surface: transparent;
+  --af-surface-accent: #f0f4ff;
+  --af-accent-border: #c0d0f0;
+  --af-code-bg: #f4f4f8;
+  --af-code-inline-bg: #eef0f5;
+  --af-branding: #c0c0c0;
+}
+
+.night_mode {
+  --af-text-primary: #e2e8f0;
+  --af-text-secondary: #9ca3af;
+  --af-text-muted: #6b7280;
+  --af-border: #334155;
+  --af-surface: transparent;
+  --af-surface-accent: #1e293b;
+  --af-accent-border: #475569;
+  --af-code-bg: #1e293b;
+  --af-code-inline-bg: #1e293b;
+  --af-branding: #4b5563;
+}
+
+/* ── Base card ── */
+.ankiforge-card {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  text-align: center;
+  padding: 2rem 1.5rem;
+  max-width: 600px;
+  margin: 0 auto;
+  color: var(--af-text-primary);
+  background: var(--af-surface);
+  line-height: 1.6;
+}
+
+/* ── Question — front face: large & bold ── */
+.front .question {
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1.45;
+  margin-bottom: 1rem;
+}
+
+/* ── Question — back face: demoted for cognitive load ── */
+.back .question {
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--af-text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+hr#answer {
+  border: none;
+  border-top: 1px solid var(--af-border);
+  margin: 1rem 0;
+}
+
+/* ── Answer ── */
+.answer {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  text-align: left;
+}
+
+/* ── Audio player ── */
+.audio {
+  margin-bottom: 0.5rem;
+}
+
+/* ── Image ── */
+.image {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.image img {
+  max-width: min(320px, 100%);
+  max-height: 280px;
+  border-radius: 10px;
+  object-fit: contain;
+}
+
+/* ── Branding ── */
+.branding {
+  margin-top: 2rem;
+  font-size: 0.65rem;
+  color: var(--af-branding);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Code blocks ── */
 pre {
   text-align: left;
-  background: #f4f4f8;
-  border-radius: 6px;
+  background: var(--af-code-bg);
+  border-radius: 8px;
   padding: 0.8rem 1rem;
   overflow-x: auto;
   margin: 0.8rem 0;
+  border: 1px solid var(--af-border);
 }
 
 pre code {
   font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
-  font-size: 0.95rem;
-  line-height: 1.5;
+  font-size: 0.9rem;
+  line-height: 1.55;
   color: inherit;
   background: none;
   padding: 0;
@@ -45,18 +145,10 @@ pre code {
 
 code {
   font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
-  background: #eef0f5;
-  padding: 0.1rem 0.35rem;
-  border-radius: 3px;
-  font-size: 0.9em;
-}
-
-.night_mode pre {
-  background: #252545;
-}
-
-.night_mode code {
-  background: #303050;
+  background: var(--af-code-inline-bg);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.88em;
 }
 
 /* highlight.js — override background */
@@ -66,25 +158,81 @@ pre code.hljs {
 }
 
 /* Syntax colors — light mode */
-.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-type { color: #d73a49; }
-.hljs-string, .hljs-attr, .hljs-symbol { color: #032f62; }
-.hljs-number, .hljs-literal { color: #005cc5; }
-.hljs-comment, .hljs-doctag { color: #6a737d; font-style: italic; }
-.hljs-title.function_, .hljs-title.class_ { color: #6f42c1; }
-.hljs-meta, .hljs-name { color: #005cc5; }
-.hljs-variable, .hljs-params { color: #24292e; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-type { color: #c2410c; }
+.hljs-string, .hljs-attr, .hljs-symbol { color: #15803d; }
+.hljs-number, .hljs-literal { color: #1d4ed8; }
+.hljs-comment, .hljs-doctag { color: #6b7280; font-style: italic; }
+.hljs-title.function_, .hljs-title.class_ { color: #7c3aed; }
+.hljs-meta, .hljs-name { color: #1d4ed8; }
+.hljs-variable, .hljs-params { color: #1a1a2e; }
 
 /* Syntax colors — dark mode */
 .night_mode .hljs-keyword, .night_mode .hljs-selector-tag,
-.night_mode .hljs-built_in, .night_mode .hljs-type { color: #ff7b72; }
+.night_mode .hljs-built_in, .night_mode .hljs-type { color: #fb923c; }
 .night_mode .hljs-string, .night_mode .hljs-attr,
-.night_mode .hljs-symbol { color: #a5d6ff; }
-.night_mode .hljs-number, .night_mode .hljs-literal { color: #79c0ff; }
-.night_mode .hljs-comment, .night_mode .hljs-doctag { color: #8b949e; }
+.night_mode .hljs-symbol { color: #86efac; }
+.night_mode .hljs-number, .night_mode .hljs-literal { color: #93c5fd; }
+.night_mode .hljs-comment, .night_mode .hljs-doctag { color: #6b7280; }
 .night_mode .hljs-title.function_,
-.night_mode .hljs-title.class_ { color: #d2a8ff; }
-.night_mode .hljs-meta, .night_mode .hljs-name { color: #79c0ff; }
-.night_mode .hljs-variable, .night_mode .hljs-params { color: #c9d1d9; }"""
+.night_mode .hljs-title.class_ { color: #c4b5fd; }
+.night_mode .hljs-meta, .night_mode .hljs-name { color: #93c5fd; }
+.night_mode .hljs-variable, .night_mode .hljs-params { color: #e2e8f0; }
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}"""
+
+# Language-specific CSS additions
+_LANGUAGE_EXTRA_CSS = """
+
+/* ── Language card extras ── */
+.word {
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 0.4rem;
+}
+
+.word--back {
+  font-size: 1.6rem;
+  margin-bottom: 0.3rem;
+}
+
+.transcription {
+  font-size: 1rem;
+  color: var(--af-text-secondary);
+  margin-bottom: 0.5rem;
+  font-style: italic;
+}
+
+.definition {
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.55;
+  text-align: left;
+  margin-bottom: 1rem;
+  padding: 0.8rem 1rem;
+  background: var(--af-surface-accent);
+  border-left: 3px solid var(--af-accent-border);
+  border-radius: 0 8px 8px 0;
+}
+
+.example {
+  font-size: 1.05rem;
+  font-style: italic;
+  line-height: 1.55;
+  text-align: left;
+  color: var(--af-text-secondary);
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid var(--af-border);
+  border-radius: 0 6px 6px 0;
+}"""
+
+# ---------------------------------------------------------------------------
+# QA note type
+# ---------------------------------------------------------------------------
 
 QA_FRONT_TEMPLATE = """\
 <div class="ankiforge-card front">
@@ -102,98 +250,7 @@ QA_BACK_TEMPLATE = (
     + _HLJS_SCRIPT
 )
 
-QA_CSS = (
-    """\
-.ankiforge-card {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  text-align: center;
-  padding: 2rem 1.5rem;
-  max-width: 600px;
-  margin: 0 auto;
-  color: #1a1a2e;
-  background: #ffffff;
-}
-
-.question {
-  font-size: 1.6rem;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-bottom: 1rem;
-}
-
-hr#answer {
-  border: none;
-  border-top: 2px solid #e0e0e0;
-  margin: 1.2rem 0;
-}
-
-.answer {
-  font-size: 1.2rem;
-  line-height: 1.6;
-  text-align: left;
-}
-
-.branding {
-  margin-top: 2rem;
-  font-size: 0.7rem;
-  color: #b0b0b0;
-  letter-spacing: 0.05em;
-}
-
-/* Anki night mode */
-.night_mode .ankiforge-card {
-  color: #e0e0e0;
-  background: #1a1a2e;
-}
-
-.night_mode hr#answer {
-  border-top-color: #3a3a5e;
-}
-
-.night_mode .branding {
-  color: #555;
-}"""
-    + _CODE_CSS
-)
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
-def ensure_qa_note_type() -> dict[str, Any]:
-    """Создаёт или находит существующий note type 'AnkiForge QA'.
-
-    Returns:
-        Словарь note type (Anki model dict).
-    """
-    mw = _get_mw()
-    models = mw.col.models
-
-    existing = models.by_name(QA_NOTE_TYPE_NAME)
-    if existing is not None:
-        return existing  # type: ignore[no-any-return]
-
-    model: dict[str, Any] = models.new(QA_NOTE_TYPE_NAME)
-    model["name"] = QA_NOTE_TYPE_NAME
-
-    # Поля: Question, Answer
-    for field_name in ("Question", "Answer"):
-        field = models.new_field(field_name)
-        models.add_field(model, field)
-
-    # Шаблон
-    tmpl = models.new_template("Card 1")
-    tmpl["qfmt"] = QA_FRONT_TEMPLATE
-    tmpl["afmt"] = QA_BACK_TEMPLATE
-    models.add_template(model, tmpl)
-
-    model["css"] = QA_CSS
-
-    models.add(model)
-    return model
-
+QA_CSS = _BASE_CSS
 
 # ---------------------------------------------------------------------------
 # QA+Image note type
@@ -218,101 +275,7 @@ QA_IMAGE_BACK_TEMPLATE = (
     + _HLJS_SCRIPT
 )
 
-QA_IMAGE_CSS = (
-    """\
-.ankiforge-card {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  text-align: center;
-  padding: 2rem 1.5rem;
-  max-width: 600px;
-  margin: 0 auto;
-  color: #1a1a2e;
-  background: #ffffff;
-}
-
-.question {
-  font-size: 1.6rem;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-bottom: 1rem;
-}
-
-hr#answer {
-  border: none;
-  border-top: 2px solid #e0e0e0;
-  margin: 1.2rem 0;
-}
-
-.answer {
-  font-size: 1.2rem;
-  line-height: 1.6;
-  text-align: left;
-  margin-bottom: 1rem;
-}
-
-.image img {
-  max-width: 300px;
-  max-height: 300px;
-  border-radius: 12px;
-  margin-top: 0.5rem;
-}
-
-.branding {
-  margin-top: 2rem;
-  font-size: 0.7rem;
-  color: #b0b0b0;
-  letter-spacing: 0.05em;
-}
-
-/* Anki night mode */
-.night_mode .ankiforge-card {
-  color: #e0e0e0;
-  background: #1a1a2e;
-}
-
-.night_mode hr#answer {
-  border-top-color: #3a3a5e;
-}
-
-.night_mode .branding {
-  color: #555;
-}"""
-    + _CODE_CSS
-)
-
-
-def ensure_qa_image_note_type() -> dict[str, Any]:
-    """Создаёт или находит существующий note type 'AnkiForge QA+Image'.
-
-    Returns:
-        Словарь note type (Anki model dict).
-    """
-    mw = _get_mw()
-    models = mw.col.models
-
-    existing = models.by_name(QA_IMAGE_NOTE_TYPE_NAME)
-    if existing is not None:
-        return existing  # type: ignore[no-any-return]
-
-    model: dict[str, Any] = models.new(QA_IMAGE_NOTE_TYPE_NAME)
-    model["name"] = QA_IMAGE_NOTE_TYPE_NAME
-
-    # Поля: Question, Answer, Image
-    for field_name in ("Question", "Answer", "Image"):
-        field = models.new_field(field_name)
-        models.add_field(model, field)
-
-    # Шаблон
-    tmpl = models.new_template("Card 1")
-    tmpl["qfmt"] = QA_IMAGE_FRONT_TEMPLATE
-    tmpl["afmt"] = QA_IMAGE_BACK_TEMPLATE
-    models.add_template(model, tmpl)
-
-    model["css"] = QA_IMAGE_CSS
-
-    models.add(model)
-    return model
-
+QA_IMAGE_CSS = _BASE_CSS
 
 # ---------------------------------------------------------------------------
 # QA+Audio note type
@@ -335,97 +298,7 @@ QA_AUDIO_BACK_TEMPLATE = (
     + _HLJS_SCRIPT
 )
 
-QA_AUDIO_CSS = (
-    """\
-.ankiforge-card {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  text-align: center;
-  padding: 2rem 1.5rem;
-  max-width: 600px;
-  margin: 0 auto;
-  color: #1a1a2e;
-  background: #ffffff;
-}
-
-.question {
-  font-size: 1.6rem;
-  font-weight: 600;
-  line-height: 1.4;
-  margin-bottom: 1rem;
-}
-
-.audio {
-  margin-bottom: 0.5rem;
-}
-
-hr#answer {
-  border: none;
-  border-top: 2px solid #e0e0e0;
-  margin: 1.2rem 0;
-}
-
-.answer {
-  font-size: 1.2rem;
-  line-height: 1.6;
-  text-align: left;
-}
-
-.branding {
-  margin-top: 2rem;
-  font-size: 0.7rem;
-  color: #b0b0b0;
-  letter-spacing: 0.05em;
-}
-
-/* Anki night mode */
-.night_mode .ankiforge-card {
-  color: #e0e0e0;
-  background: #1a1a2e;
-}
-
-.night_mode hr#answer {
-  border-top-color: #3a3a5e;
-}
-
-.night_mode .branding {
-  color: #555;
-}"""
-    + _CODE_CSS
-)
-
-
-def ensure_qa_audio_note_type() -> dict[str, Any]:
-    """Создаёт или находит существующий note type 'AnkiForge QA+Audio'.
-
-    Returns:
-        Словарь note type (Anki model dict).
-    """
-    mw = _get_mw()
-    models = mw.col.models
-
-    existing = models.by_name(QA_AUDIO_NOTE_TYPE_NAME)
-    if existing is not None:
-        return existing  # type: ignore[no-any-return]
-
-    model: dict[str, Any] = models.new(QA_AUDIO_NOTE_TYPE_NAME)
-    model["name"] = QA_AUDIO_NOTE_TYPE_NAME
-
-    # Поля: Question, Answer, Audio
-    for field_name in ("Question", "Answer", "Audio"):
-        field = models.new_field(field_name)
-        models.add_field(model, field)
-
-    # Шаблон
-    tmpl = models.new_template("Card 1")
-    tmpl["qfmt"] = QA_AUDIO_FRONT_TEMPLATE
-    tmpl["afmt"] = QA_AUDIO_BACK_TEMPLATE
-    models.add_template(model, tmpl)
-
-    model["css"] = QA_AUDIO_CSS
-
-    models.add(model)
-    return model
-
+QA_AUDIO_CSS = _BASE_CSS
 
 # ---------------------------------------------------------------------------
 # Language note type
@@ -442,7 +315,7 @@ LANGUAGE_FRONT_TEMPLATE = """\
 LANGUAGE_BACK_TEMPLATE = (
     """\
 <div class="ankiforge-card back">
-  <div class="word">{{Word}}</div>
+  <div class="word word--back">{{Word}}</div>
   {{#Transcription}}<div class="transcription">{{Transcription}}</div>{{/Transcription}}
   <hr id="answer">
   <div class="definition">{{Definition}}</div>
@@ -472,107 +345,11 @@ LANGUAGE_BACK_TEMPLATE = (
 </script>"""
 )
 
-LANGUAGE_CSS = (
-    """\
-.ankiforge-card {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  text-align: center;
-  padding: 2rem 1.5rem;
-  max-width: 600px;
-  margin: 0 auto;
-  color: #1a1a2e;
-  background: #ffffff;
-}
+LANGUAGE_CSS = _BASE_CSS + _LANGUAGE_EXTRA_CSS
 
-.word {
-  font-size: 2rem;
-  font-weight: 700;
-  line-height: 1.3;
-  margin-bottom: 0.5rem;
-}
-
-.transcription {
-  font-size: 1.1rem;
-  color: #7a8aaa;
-  margin-bottom: 0.5rem;
-}
-
-.audio {
-  margin-bottom: 0.5rem;
-}
-
-hr#answer {
-  border: none;
-  border-top: 2px solid #e0e0e0;
-  margin: 1.2rem 0;
-}
-
-.definition {
-  font-size: 1.3rem;
-  font-weight: 600;
-  line-height: 1.5;
-  text-align: left;
-  margin-bottom: 1rem;
-  padding: 0.8rem;
-  background: #f0f4ff;
-  border-radius: 8px;
-}
-
-.example {
-  font-size: 1.1rem;
-  font-style: italic;
-  line-height: 1.5;
-  text-align: left;
-  color: #5a6a8a;
-  margin-bottom: 1rem;
-  padding: 0.6rem 0.8rem;
-  border-left: 3px solid #c0d0f0;
-}
-
-.image img {
-  max-width: 300px;
-  max-height: 300px;
-  border-radius: 12px;
-  margin-top: 0.5rem;
-}
-
-.branding {
-  margin-top: 2rem;
-  font-size: 0.7rem;
-  color: #b0b0b0;
-  letter-spacing: 0.05em;
-}
-
-/* Anki night mode */
-.night_mode .ankiforge-card {
-  color: #e0e0e0;
-  background: #1a1a2e;
-}
-
-.night_mode hr#answer {
-  border-top-color: #3a3a5e;
-}
-
-.night_mode .definition {
-  background: #252545;
-  color: #d0d8f0;
-}
-
-.night_mode .transcription {
-  color: #8a9ac0;
-}
-
-.night_mode .example {
-  color: #8a9ac0;
-  border-left-color: #4a5a80;
-}
-
-.night_mode .branding {
-  color: #555;
-}"""
-    + _CODE_CSS
-)
-
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 _LANGUAGE_FIELDS = (
     "Word",
@@ -585,6 +362,99 @@ _LANGUAGE_FIELDS = (
     "AudioExample",
     "Transcription",
 )
+
+
+def ensure_qa_note_type() -> dict[str, Any]:
+    """Создаёт или находит существующий note type 'AnkiForge QA'.
+
+    Returns:
+        Словарь note type (Anki model dict).
+    """
+    mw = _get_mw()
+    models = mw.col.models
+
+    existing = models.by_name(QA_NOTE_TYPE_NAME)
+    if existing is not None:
+        return existing  # type: ignore[no-any-return]
+
+    model: dict[str, Any] = models.new(QA_NOTE_TYPE_NAME)
+    model["name"] = QA_NOTE_TYPE_NAME
+
+    for field_name in ("Question", "Answer"):
+        field = models.new_field(field_name)
+        models.add_field(model, field)
+
+    tmpl = models.new_template("Card 1")
+    tmpl["qfmt"] = QA_FRONT_TEMPLATE
+    tmpl["afmt"] = QA_BACK_TEMPLATE
+    models.add_template(model, tmpl)
+
+    model["css"] = QA_CSS
+
+    models.add(model)
+    return model
+
+
+def ensure_qa_image_note_type() -> dict[str, Any]:
+    """Создаёт или находит существующий note type 'AnkiForge QA+Image'.
+
+    Returns:
+        Словарь note type (Anki model dict).
+    """
+    mw = _get_mw()
+    models = mw.col.models
+
+    existing = models.by_name(QA_IMAGE_NOTE_TYPE_NAME)
+    if existing is not None:
+        return existing  # type: ignore[no-any-return]
+
+    model: dict[str, Any] = models.new(QA_IMAGE_NOTE_TYPE_NAME)
+    model["name"] = QA_IMAGE_NOTE_TYPE_NAME
+
+    for field_name in ("Question", "Answer", "Image"):
+        field = models.new_field(field_name)
+        models.add_field(model, field)
+
+    tmpl = models.new_template("Card 1")
+    tmpl["qfmt"] = QA_IMAGE_FRONT_TEMPLATE
+    tmpl["afmt"] = QA_IMAGE_BACK_TEMPLATE
+    models.add_template(model, tmpl)
+
+    model["css"] = QA_IMAGE_CSS
+
+    models.add(model)
+    return model
+
+
+def ensure_qa_audio_note_type() -> dict[str, Any]:
+    """Создаёт или находит существующий note type 'AnkiForge QA+Audio'.
+
+    Returns:
+        Словарь note type (Anki model dict).
+    """
+    mw = _get_mw()
+    models = mw.col.models
+
+    existing = models.by_name(QA_AUDIO_NOTE_TYPE_NAME)
+    if existing is not None:
+        return existing  # type: ignore[no-any-return]
+
+    model: dict[str, Any] = models.new(QA_AUDIO_NOTE_TYPE_NAME)
+    model["name"] = QA_AUDIO_NOTE_TYPE_NAME
+
+    for field_name in ("Question", "Answer", "Audio"):
+        field = models.new_field(field_name)
+        models.add_field(model, field)
+
+    tmpl = models.new_template("Card 1")
+    tmpl["qfmt"] = QA_AUDIO_FRONT_TEMPLATE
+    tmpl["afmt"] = QA_AUDIO_BACK_TEMPLATE
+    models.add_template(model, tmpl)
+
+    model["css"] = QA_AUDIO_CSS
+
+    models.add(model)
+    return model
 
 
 def ensure_language_note_type() -> dict[str, Any]:
@@ -610,7 +480,6 @@ def ensure_language_note_type() -> dict[str, Any]:
         field = models.new_field(field_name)
         models.add_field(model, field)
 
-    # Шаблон
     tmpl = models.new_template("Card 1")
     tmpl["qfmt"] = LANGUAGE_FRONT_TEMPLATE
     tmpl["afmt"] = LANGUAGE_BACK_TEMPLATE
@@ -641,7 +510,6 @@ def _upgrade_language_note_type(model: dict[str, Any], models: Any) -> dict[str,
             models.add_field(model, field)
             changed = True
 
-    # Обновляем шаблоны
     tmpl = model["tmpls"][0]
     if tmpl["qfmt"] != LANGUAGE_FRONT_TEMPLATE:
         tmpl["qfmt"] = LANGUAGE_FRONT_TEMPLATE
