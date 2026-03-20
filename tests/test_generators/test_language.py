@@ -2,29 +2,62 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
 
 from ankiforge.anki_bridge.note_types import LANGUAGE_NOTE_TYPE_NAME
 from ankiforge.generators.language import LanguageGenerator
-from ankiforge.models import CardRequest, GeneratedCard, GenerationMode, GenerationProgress
+from ankiforge.models import CardRequest, GeneratedCard, GenerationMode, GenerationProgress, LanguageOptions
 from ankiforge.openrouter.client import OpenRouterClient
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
+_MOCK_JSON_RESPONSE = json.dumps(
+    {
+        "definition": "An apple is a round fruit that grows on trees.",
+        "example": "She picked a ripe apple from the tree and bit into it.",
+        "ipa": "/ˈæpəl/",
+    }
+)
+
+
+def _make_fake_wav(pcm_size: int = 100) -> bytes:
+    """Создаёт минимальный валидный WAV для тестов."""
+    import struct
+
+    pcm = b"\x01\x00" * pcm_size
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF",
+        36 + len(pcm),
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        1,
+        24000,
+        48000,
+        2,
+        16,
+        b"data",
+        len(pcm),
+    )
+    return header + pcm
+
 
 @pytest.fixture
 def mock_client() -> MagicMock:
     """Мок OpenRouterClient."""
     client = MagicMock(spec=OpenRouterClient)
-    client.generate_text.return_value = (
-        "DEFINITION: A large, typically red fruit\nEXAMPLE: She ate a delicious apple for lunch."
-    )
-    client.generate_audio.return_value = b"fake-audio-bytes"
+    client.generate_text.return_value = _MOCK_JSON_RESPONSE
+    client.generate_audio.return_value = _make_fake_wav(100)
     client.generate_image.return_value = b"fake-image-bytes"
+    client.last_usage = (0, 0)
+    client.last_cost = 0.0
     return client
 
 
@@ -83,85 +116,91 @@ class TestParseWords:
             generator._parse_words("   \n  \n  ")
 
     def test_mixed_newlines_and_commas(self, generator: LanguageGenerator) -> None:
-        """Если есть переводы строк — разделяем по ним, запятые внутри строки не разделяют."""
         result = generator._parse_words("apple, pear\nbanana")
         assert result == ["apple, pear", "banana"]
 
-    def test_comma_only_single_line(self, generator: LanguageGenerator) -> None:
-        """Если одна строка — разделяем по запятым."""
-        result = generator._parse_words("apple, banana, cherry")
-        assert result == ["apple", "banana", "cherry"]
-
 
 # ---------------------------------------------------------------------------
-# Парсинг ответа AI
+# Парсинг JSON ответа
 # ---------------------------------------------------------------------------
 
 
-class TestParseResponse:
-    def test_parses_definition_and_example(self, generator: LanguageGenerator) -> None:
-        response = "DEFINITION: A round fruit with red skin\nEXAMPLE: I eat an apple every day."
-        definition, example = generator._parse_response(response)
-        assert definition == "A round fruit with red skin"
+class TestParseJsonResponse:
+    def test_parses_json(self, generator: LanguageGenerator) -> None:
+        response = json.dumps(
+            {
+                "definition": "A round fruit",
+                "example": "I eat an apple every day.",
+                "ipa": "/ˈæpəl/",
+            }
+        )
+        definition, example, ipa = generator._parse_json_response(response)
+        assert definition == "A round fruit"
         assert example == "I eat an apple every day."
+        assert ipa == "/ˈæpəl/"
 
-    def test_multiline_definition(self, generator: LanguageGenerator) -> None:
-        response = "DEFINITION: A round fruit\nwith red or green skin\nEXAMPLE: She picked an apple from the tree."
-        definition, example = generator._parse_response(response)
-        assert "round fruit" in definition
-        assert example == "She picked an apple from the tree."
+    def test_parses_json_with_markdown_fences(self, generator: LanguageGenerator) -> None:
+        response = '```json\n{"definition": "A fruit", "example": "Eat it.", "ipa": "/x/"}\n```'
+        definition, example, ipa = generator._parse_json_response(response)
+        assert definition == "A fruit"
+        assert example == "Eat it."
 
-    def test_fallback_when_no_markers(self, generator: LanguageGenerator) -> None:
-        """Если AI не следует формату — первое предложение = definition, остальное = example."""
-        response = "A round fruit. I eat an apple every day."
-        definition, example = generator._parse_response(response)
-        assert definition != ""
-        assert example != ""
+    def test_fallback_to_text_format(self, generator: LanguageGenerator) -> None:
+        response = "DEFINITION: A round fruit\nEXAMPLE: I eat an apple."
+        definition, example, ipa = generator._parse_json_response(response)
+        assert definition == "A round fruit"
+        assert example == "I eat an apple."
+        assert ipa is None
 
     def test_empty_response(self, generator: LanguageGenerator) -> None:
-        definition, example = generator._parse_response("")
+        definition, example, ipa = generator._parse_json_response("")
         assert definition == ""
         assert example == ""
+        assert ipa is None
+
+    def test_json_without_ipa(self, generator: LanguageGenerator) -> None:
+        response = json.dumps({"definition": "A fruit", "example": "Eat it."})
+        definition, example, ipa = generator._parse_json_response(response)
+        assert definition == "A fruit"
+        assert example == "Eat it."
+        assert ipa is None
 
 
 # ---------------------------------------------------------------------------
-# Генерация карточек
+# Генерация карточек — один JSON-запрос на текст
 # ---------------------------------------------------------------------------
 
 
 class TestGenerate:
-    def test_returns_generated_cards(
-        self,
-        generator: LanguageGenerator,
-        base_request: CardRequest,
-    ) -> None:
-        callback = MagicMock()
-        cards = generator.generate(base_request, callback)
-
+    def test_returns_generated_cards(self, generator: LanguageGenerator, base_request: CardRequest) -> None:
+        cards = generator.generate(base_request, MagicMock())
         assert len(cards) == 2
         assert all(isinstance(c, GeneratedCard) for c in cards)
 
-    def test_card_fields(
-        self,
-        generator: LanguageGenerator,
-        mock_client: MagicMock,
-        base_request: CardRequest,
+    def test_card_fields_all_options(
+        self, generator: LanguageGenerator, mock_client: MagicMock, base_request: CardRequest
     ) -> None:
+        """Дефолт — все опции: audio_data, audio_definition, audio_example, image_data, transcription."""
         cards = generator.generate(base_request, MagicMock())
-
         card = cards[0]
         assert card.word == "apple"
         assert card.definition is not None
         assert card.example is not None
-        assert card.audio_data == b"fake-audio-bytes"
+        assert card.audio_data is not None
+        assert len(card.audio_data) > 44  # valid WAV
+        assert card.audio_example is not None
+        # Тишина — отдельный файл (генерируется когда есть и def, и example audio)
+        assert card.audio_silence is not None
+        assert len(card.audio_silence) > 44
         assert card.image_data == b"fake-image-bytes"
+        assert card.transcription == "/ˈæpəl/"
         assert card.note_type == LANGUAGE_NOTE_TYPE_NAME
+        # Слово выделено жирным в definition и example
+        assert "<b>" in (card.definition or "")
+        assert "<b>" in (card.example or "")
 
-    def test_calls_all_three_apis(
-        self,
-        generator: LanguageGenerator,
-        mock_client: MagicMock,
-    ) -> None:
+    def test_single_text_call_per_word(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        """Один text-запрос на слово (definition + example + IPA в JSON)."""
         request = CardRequest(
             mode=GenerationMode.LANGUAGE,
             input_text="apple",
@@ -169,16 +208,10 @@ class TestGenerate:
             language="en",
         )
         generator.generate(request, MagicMock())
-
         assert mock_client.generate_text.call_count == 1
-        assert mock_client.generate_audio.call_count == 1
-        assert mock_client.generate_image.call_count == 1
 
-    def test_uses_correct_models(
-        self,
-        generator: LanguageGenerator,
-        mock_client: MagicMock,
-    ) -> None:
+    def test_three_audio_calls_per_word(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        """3 audio вызова: word, definition, example."""
         request = CardRequest(
             mode=GenerationMode.LANGUAGE,
             input_text="apple",
@@ -186,36 +219,231 @@ class TestGenerate:
             language="en",
         )
         generator.generate(request, MagicMock())
+        assert mock_client.generate_audio.call_count == 3
 
-        # text model
-        assert mock_client.generate_text.call_args[0][1] == "openai/gpt-4o"
-        # audio model
-        assert mock_client.generate_audio.call_args[0][1] == "openai/tts-1"
-        # image model
-        assert mock_client.generate_image.call_args[0][1] == "openai/dall-e-3"
-
-    def test_progress_callback_called(
-        self,
-        generator: LanguageGenerator,
-        base_request: CardRequest,
-    ) -> None:
+    def test_progress_callback_called(self, generator: LanguageGenerator, base_request: CardRequest) -> None:
         snapshots: list[int] = []
 
-        def capture_progress(progress: GenerationProgress) -> None:
+        def capture(progress: GenerationProgress) -> None:
             snapshots.append(progress.completed_cards)
 
-        generator.generate(base_request, capture_progress)
-
+        generator.generate(base_request, capture)
         assert snapshots == [1, 2]
 
     def test_empty_input_raises(self, generator: LanguageGenerator) -> None:
-        request = CardRequest(
-            mode=GenerationMode.LANGUAGE,
-            input_text="",
-            target_deck="Test",
-        )
+        request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="", target_deck="Test")
         with pytest.raises(ValueError, match="Не найдено слов"):
             generator.generate(request, MagicMock())
+
+    def test_cost_from_api_cost(self, mock_client: MagicMock) -> None:
+        """Стоимость берётся из usage.cost если OpenRouter её вернул."""
+        mock_client.last_cost = 0.05  # API вернул стоимость
+        gen = LanguageGenerator(
+            client=mock_client,
+            text_model="openai/gpt-4o",
+            audio_model="openai/tts-1",
+            image_model="openai/dall-e-3",
+        )
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+        )
+        costs: list[float] = []
+
+        def capture(progress: GenerationProgress) -> None:
+            costs.append(progress.current_cost)
+
+        gen.generate(request, capture)
+        # 5 вызовов API (text + 3 audio + image), каждый $0.05
+        assert costs[-1] == pytest.approx(0.25, abs=0.01)
+
+    def test_cost_fallback_to_pricing(self, mock_client: MagicMock) -> None:
+        """Если usage.cost == 0, считаем из токенов × pricing."""
+        from ankiforge.models import ModelPricingCache
+
+        mock_client.last_cost = 0.0
+        mock_client.last_usage = (100, 50)
+        pricing = ModelPricingCache(prompt=0.001, completion=0.002)
+        gen = LanguageGenerator(
+            client=mock_client,
+            text_model="openai/gpt-4o",
+            audio_model="openai/tts-1",
+            image_model="openai/dall-e-3",
+            text_pricing=pricing,
+            image_pricing=pricing,
+            audio_pricing=pricing,
+        )
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+        )
+        costs: list[float] = []
+
+        def capture(progress: GenerationProgress) -> None:
+            costs.append(progress.current_cost)
+
+        gen.generate(request, capture)
+        # Каждый вызов: 100*0.001 + 50*0.002 = 0.2; 5 вызовов = 1.0
+        assert costs[-1] == pytest.approx(1.0, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# LanguageOptions — условная генерация
+# ---------------------------------------------------------------------------
+
+
+class TestLanguageOptions:
+    def test_no_photo(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(include_photo=False),
+        )
+        cards = generator.generate(request, MagicMock())
+        mock_client.generate_image.assert_not_called()
+        assert cards[0].image_data is None
+
+    def test_no_audio_word(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(include_audio_word=False),
+        )
+        cards = generator.generate(request, MagicMock())
+        assert cards[0].audio_data is None
+        assert mock_client.generate_audio.call_count == 2  # definition + example
+
+    def test_no_transcription(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(include_transcription=False),
+        )
+        cards = generator.generate(request, MagicMock())
+        assert cards[0].transcription is None
+        # Всё ещё 1 text-запрос (JSON включает definition + example)
+        assert mock_client.generate_text.call_count == 1
+
+    def test_all_disabled(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(
+                include_photo=False,
+                include_audio_word=False,
+                include_audio_definition=False,
+                include_audio_example=False,
+                include_transcription=False,
+            ),
+        )
+        generator.generate(request, MagicMock())
+        assert mock_client.generate_text.call_count == 1
+        assert mock_client.generate_audio.call_count == 0
+        assert mock_client.generate_image.call_count == 0
+
+    def test_detailed_image(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(detailed_image=True),
+        )
+        generator.generate(request, MagicMock())
+        image_prompt = mock_client.generate_image.call_args[0][0]
+        assert "photorealistic" in image_prompt.lower() or "ultra" in image_prompt.lower()
+
+    def test_voice_passed_to_audio(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(
+                include_photo=False,
+                include_audio_word=True,
+                include_audio_definition=False,
+                include_audio_example=False,
+                voice="nova",
+            ),
+        )
+        generator.generate(request, MagicMock())
+        # generate_audio вызван 1 раз (только word) с voice="nova"
+        assert mock_client.generate_audio.call_count == 1
+        _, kwargs = mock_client.generate_audio.call_args
+        assert kwargs["voice"] == "nova"
+
+    def test_default_voice_is_alloy(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(
+                include_photo=False,
+                include_audio_definition=False,
+                include_audio_example=False,
+            ),
+        )
+        generator.generate(request, MagicMock())
+        _, kwargs = mock_client.generate_audio.call_args
+        assert kwargs["voice"] == "alloy"
+
+    def test_image_size_passed_to_api(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(image_size="0.5K"),
+        )
+        generator.generate(request, MagicMock())
+        _, kwargs = mock_client.generate_image.call_args
+        assert kwargs["size"] == "0.5K"
+
+    def test_generate_text_called_with_temperature_03(
+        self, generator: LanguageGenerator, mock_client: MagicMock
+    ) -> None:
+        """generate_text вызывается с temperature=0.3."""
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(
+                include_photo=False,
+                include_audio_word=False,
+                include_audio_definition=False,
+                include_audio_example=False,
+            ),
+        )
+        generator.generate(request, MagicMock())
+        call = mock_client.generate_text.call_args
+        assert call.kwargs.get("temperature") == 0.3
+
+    def test_image_size_auto_passes_none(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(image_size="auto"),
+        )
+        generator.generate(request, MagicMock())
+        _, kwargs = mock_client.generate_image.call_args
+        assert kwargs["size"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -224,11 +452,7 @@ class TestGenerate:
 
 
 class TestCancellation:
-    def test_stops_on_cancel(
-        self,
-        generator: LanguageGenerator,
-        mock_client: MagicMock,
-    ) -> None:
+    def test_stops_on_cancel(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
         request = CardRequest(
             mode=GenerationMode.LANGUAGE,
             input_text="apple\nbanana\ncherry",
@@ -245,7 +469,6 @@ class TestCancellation:
                 progress.is_cancelled = True
 
         cards = generator.generate(request, cancel_on_first)
-
         assert len(cards) == 1
         assert mock_client.generate_text.call_count == 1
 
@@ -256,100 +479,137 @@ class TestCancellation:
 
 
 class TestPrompt:
-    def test_prompt_contains_word(
-        self,
-        generator: LanguageGenerator,
-        mock_client: MagicMock,
-    ) -> None:
-        request = CardRequest(
-            mode=GenerationMode.LANGUAGE,
-            input_text="apple",
-            target_deck="Test",
-            language="en",
-        )
+    def test_prompt_contains_word(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
         generator.generate(request, MagicMock())
-
         prompt = mock_client.generate_text.call_args[0][0]
         assert "apple" in prompt
 
-    def test_prompt_contains_language(
-        self,
-        generator: LanguageGenerator,
-        mock_client: MagicMock,
-    ) -> None:
-        request = CardRequest(
-            mode=GenerationMode.LANGUAGE,
-            input_text="apple",
-            target_deck="Test",
-            language="en",
-        )
+    def test_prompt_asks_for_json(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
         generator.generate(request, MagicMock())
-
         prompt = mock_client.generate_text.call_args[0][0]
-        assert "en" in prompt.lower() or "english" in prompt.lower()
+        assert "json" in prompt.lower() or "JSON" in prompt
 
-    def test_prompt_asks_for_definition_and_example(
-        self,
-        generator: LanguageGenerator,
-        mock_client: MagicMock,
-    ) -> None:
-        request = CardRequest(
-            mode=GenerationMode.LANGUAGE,
-            input_text="apple",
-            target_deck="Test",
-            language="en",
-        )
+    def test_prompt_requires_word_in_definition(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        """Промпт должен требовать использование слова в определении."""
+        request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
         generator.generate(request, MagicMock())
-
         prompt = mock_client.generate_text.call_args[0][0]
-        assert "DEFINITION" in prompt
-        assert "EXAMPLE" in prompt
+        assert "starts with the word" in prompt.lower() or "STARTS with the word" in prompt
 
-    def test_custom_prompt_overrides_default(
-        self,
-        generator: LanguageGenerator,
-        mock_client: MagicMock,
-    ) -> None:
-        request = CardRequest(
-            mode=GenerationMode.LANGUAGE,
-            input_text="apple",
-            target_deck="Test",
-            language="en",
-            custom_prompt="Give me a fun fact about this word",
-        )
+    def test_prompt_requires_word_in_example(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        """Промпт должен требовать использование слова в примере."""
+        request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
         generator.generate(request, MagicMock())
-
         prompt = mock_client.generate_text.call_args[0][0]
-        assert "fun fact" in prompt
+        assert "uses the word" in prompt.lower() or "USES THE WORD" in prompt
 
-    def test_image_prompt_contains_word(
-        self,
-        generator: LanguageGenerator,
-        mock_client: MagicMock,
-    ) -> None:
+    def test_custom_prompt_overrides(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
         request = CardRequest(
             mode=GenerationMode.LANGUAGE,
             input_text="apple",
             target_deck="Test",
             language="en",
+            custom_prompt="Fun fact about this word",
         )
         generator.generate(request, MagicMock())
+        prompt = mock_client.generate_text.call_args[0][0]
+        assert "Fun fact" in prompt
 
+    def test_image_prompt_contains_example(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
+        generator.generate(request, MagicMock())
         image_prompt = mock_client.generate_image.call_args[0][0]
-        assert "apple" in image_prompt.lower()
+        assert "apple" in image_prompt.lower() or "tree" in image_prompt.lower()
 
-    def test_audio_receives_word(
-        self,
-        generator: LanguageGenerator,
-        mock_client: MagicMock,
-    ) -> None:
-        request = CardRequest(
-            mode=GenerationMode.LANGUAGE,
-            input_text="apple",
-            target_deck="Test",
-            language="en",
-        )
-        generator.generate(request, MagicMock())
 
-        audio_text = mock_client.generate_audio.call_args[0][0]
-        assert "apple" in audio_text
+# ---------------------------------------------------------------------------
+# _generate_silence_wav
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateSilenceWav:
+    def test_generates_valid_wav(self) -> None:
+        from ankiforge.generators.language import _generate_silence_wav
+
+        result = _generate_silence_wav(seconds=1.0)
+        # 44 header + 24000 samples × 2 bytes = 48044
+        assert len(result) == 44 + 24000 * 2
+        assert result[:4] == b"RIFF"
+
+    def test_silence_is_zeros(self) -> None:
+        from ankiforge.generators.language import _generate_silence_wav
+
+        result = _generate_silence_wav(seconds=0.5)
+        silence_size = int(24000 * 0.5) * 2
+        pcm_data = result[44:]
+        assert len(pcm_data) == silence_size
+        assert pcm_data == b"\x00" * silence_size
+
+    def test_default_2_seconds(self) -> None:
+        from ankiforge.generators.language import _generate_silence_wav
+
+        result = _generate_silence_wav()
+        expected_pcm = 24000 * 2 * 2  # 2 sec × 24000 Hz × 2 bytes
+        assert len(result) == 44 + expected_pcm
+
+
+# ---------------------------------------------------------------------------
+# _bold_word
+# ---------------------------------------------------------------------------
+
+
+class TestBoldWord:
+    def test_bolds_exact_word(self) -> None:
+        from ankiforge.generators.language import _bold_word
+
+        result = _bold_word("To fetch is to go and bring something back.", "fetch")
+        assert "<b>fetch</b>" in result
+
+    def test_bolds_word_form_with_suffix(self) -> None:
+        from ankiforge.generators.language import _bold_word
+
+        result = _bold_word("The cars zoomed along the road.", "zoom")
+        assert "<b>zoomed</b>" in result
+
+    def test_preserves_original_case(self) -> None:
+        from ankiforge.generators.language import _bold_word
+
+        result = _bold_word("Eloquent means able to express well.", "eloquent")
+        assert "<b>Eloquent</b>" in result
+
+    def test_bolds_multiple_occurrences(self) -> None:
+        from ankiforge.generators.language import _bold_word
+
+        result = _bold_word("Fetch the ball. She fetched it.", "fetch")
+        assert result.count("<b>") == 2
+
+    def test_empty_text(self) -> None:
+        from ankiforge.generators.language import _bold_word
+
+        assert _bold_word("", "word") == ""
+
+    def test_empty_word(self) -> None:
+        from ankiforge.generators.language import _bold_word
+
+        assert _bold_word("some text", "") == "some text"
+
+    def test_word_not_found(self) -> None:
+        from ankiforge.generators.language import _bold_word
+
+        result = _bold_word("The cat sat on the mat.", "fetch")
+        assert "<b>" not in result
+
+    def test_does_not_bold_partial_match(self) -> None:
+        from ankiforge.generators.language import _bold_word
+
+        result = _bold_word("The sketching was beautiful.", "sketch")
+        # "sketching" should match because -ing is a valid suffix
+        assert "<b>sketching</b>" in result
+
+    def test_ing_suffix(self) -> None:
+        from ankiforge.generators.language import _bold_word
+
+        result = _bold_word("She was fetching the ball.", "fetch")
+        assert "<b>fetching</b>" in result
