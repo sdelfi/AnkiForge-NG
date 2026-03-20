@@ -7,39 +7,13 @@ from typing import TYPE_CHECKING
 from ankiforge.config.manager import get_config, save_config, validate_api_key
 from ankiforge.models import AddonConfig
 from ankiforge.openrouter.models import Modality, Model
+from ankiforge.ui.styles import DIALOG_QSS
 
 if TYPE_CHECKING:
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
     from aqt.qt import QComboBox, QLabel  # type: ignore[import-not-found]
 
     from ankiforge.models import ModelPricingCache
-
-
-# ---------------------------------------------------------------------------
-# QSS — минимальный стиль, palette-friendly (работает и в dark, и в light)
-# ---------------------------------------------------------------------------
-
-_DIALOG_QSS = """
-QGroupBox {
-    font-weight: bold;
-    border: 1px solid palette(mid);
-    border-radius: 6px;
-    margin-top: 12px;
-    padding: 12px 8px 8px 8px;
-}
-QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 12px;
-    padding: 0 6px;
-}
-QComboBox:editable {
-    padding: 4px 6px;
-}
-QPushButton#connectBtn {
-    padding: 6px 20px;
-    font-weight: bold;
-}
-"""
 
 
 # ---------------------------------------------------------------------------
@@ -259,10 +233,10 @@ class SettingsDialog:
         self._dialog = QDialog(mw)
         self._dialog.setWindowTitle("AnkiForge Settings")
         self._dialog.setMinimumWidth(560)
-        self._dialog.setStyleSheet(_DIALOG_QSS)
+        self._dialog.setStyleSheet(DIALOG_QSS)
 
         layout = QVBoxLayout()
-        layout.setSpacing(12)
+        layout.setSpacing(16)
         self._dialog.setLayout(layout)
 
         # === Секция 1: Подключение к OpenRouter ===
@@ -315,11 +289,11 @@ class SettingsDialog:
         balance_layout.setContentsMargins(8, 6, 8, 8)
 
         self._usage_label = QLabel("—")
-        self._usage_label.setStyleSheet("color: #999999;")
+        self._usage_label.setStyleSheet("color: palette(mid);")
         balance_layout.addRow("Usage:", self._usage_label)
 
         self._remaining_label = QLabel("—")
-        self._remaining_label.setStyleSheet("color: #999999;")
+        self._remaining_label.setStyleSheet("color: palette(mid);")
         balance_layout.addRow("Remaining:", self._remaining_label)
 
         refresh_balance_btn = QPushButton("Refresh")
