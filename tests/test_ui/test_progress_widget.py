@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from ankiforge.models import GenerationMode, GenerationProgress
+from ankiforge.models import GenerationMode
 
 # ---------------------------------------------------------------------------
 # Тесты _count_input_items
@@ -39,13 +39,32 @@ class TestCountInputItems:
 
         assert _count_input_items("hello, world\ntest", GenerationMode.LANGUAGE) == 3
 
-    def test_material_estimates_from_length(self) -> None:
+    def test_material_small_paragraphs_merge(self) -> None:
         from ankiforge.ui.progress_widget import _count_input_items
 
-        # Длинный текст (~3000 символов) → ~6 карточек
-        text = "A" * 3000
+        # 3 коротких абзаца мержатся в 1 чанк → 1 × 3 = 3
+        text = "Абзац первый — достаточно длинный.\n\nАбзац второй — достаточно длинный.\n\nАбзац третий — достаточно длинный."
         count = _count_input_items(text, GenerationMode.MATERIAL)
-        assert count >= 3
+        assert count == 3
+
+    def test_material_topic_headings_split(self) -> None:
+        from ankiforge.ui.progress_widget import _count_input_items
+
+        # 3 заголовка-вопроса → 3 чанка × 1 = 3
+        text = (
+            "Что такое генератор\n\nОбъяснение генератора достаточно подробное.\n\n"
+            "Что такое итератор\n\nОбъяснение итератора достаточно подробное.\n\n"
+            "Что делает yield from\n\nОбъяснение yield from достаточно подробное."
+        )
+        count = _count_input_items(text, GenerationMode.MATERIAL, max_cards_per_paragraph=1)
+        assert count == 3
+
+    def test_material_single_paragraph(self) -> None:
+        from ankiforge.ui.progress_widget import _count_input_items
+
+        # Один абзац → 1 × 3 = 3
+        count = _count_input_items("Достаточно длинный текст без разбиения.", GenerationMode.MATERIAL)
+        assert count == 3
 
     def test_material_minimum_one(self) -> None:
         from ankiforge.ui.progress_widget import _count_input_items
@@ -84,74 +103,22 @@ class TestFormatCost:
     def test_zero_cost(self) -> None:
         from ankiforge.ui.progress_widget import _format_cost
 
-        assert _format_cost(0.0) == "< $0.01"
+        assert _format_cost(0.0) == "< $0.001"
 
     def test_small_cost(self) -> None:
         from ankiforge.ui.progress_widget import _format_cost
 
-        assert _format_cost(0.005) == "< $0.01"
+        assert _format_cost(0.0005) == "< $0.001"
 
     def test_normal_cost(self) -> None:
         from ankiforge.ui.progress_widget import _format_cost
 
-        assert _format_cost(0.15) == "$0.15"
+        assert _format_cost(0.15) == "$0.150"
 
     def test_large_cost(self) -> None:
         from ankiforge.ui.progress_widget import _format_cost
 
-        assert _format_cost(1.234) == "$1.23"
-
-
-# ---------------------------------------------------------------------------
-# Тесты _format_summary
-# ---------------------------------------------------------------------------
-
-
-class TestFormatSummary:
-    """Форматирование итога генерации."""
-
-    def test_basic_summary(self) -> None:
-        from ankiforge.ui.progress_widget import _format_summary
-
-        result = _format_summary(10, 0.25)
-        assert "10" in result
-        assert "$0.25" in result
-
-    def test_zero_cards(self) -> None:
-        from ankiforge.ui.progress_widget import _format_summary
-
-        result = _format_summary(0, 0.0)
-        assert "0" in result
-
-    def test_small_cost_in_summary(self) -> None:
-        from ankiforge.ui.progress_widget import _format_summary
-
-        result = _format_summary(5, 0.001)
-        assert "< $0.01" in result
-
-
-# ---------------------------------------------------------------------------
-# Тесты _format_progress_text
-# ---------------------------------------------------------------------------
-
-
-class TestFormatProgressText:
-    """Форматирование текста прогресса."""
-
-    def test_basic_progress(self) -> None:
-        from ankiforge.ui.progress_widget import _format_progress_text
-
-        progress = GenerationProgress(total_cards=10, completed_cards=3, current_cost=0.05)
-        result = _format_progress_text(progress)
-        assert "3" in result
-        assert "10" in result
-
-    def test_progress_with_cost(self) -> None:
-        from ankiforge.ui.progress_widget import _format_progress_text
-
-        progress = GenerationProgress(total_cards=5, completed_cards=2, current_cost=0.12)
-        result = _format_progress_text(progress)
-        assert "$0.12" in result
+        assert _format_cost(1.234) == "$1.234"
 
 
 # ---------------------------------------------------------------------------
@@ -163,9 +130,8 @@ class TestFindModelById:
     """Поиск модели по ID в списке."""
 
     def test_finds_existing_model(self) -> None:
-        from ankiforge.ui.progress_widget import _find_model_by_id
-
         from ankiforge.openrouter.models import Model
+        from ankiforge.ui.progress_widget import _find_model_by_id
 
         models = [
             Model(id="openai/gpt-4o", name="GPT-4o"),
@@ -176,9 +142,8 @@ class TestFindModelById:
         assert result.id == "anthropic/claude-3"
 
     def test_returns_none_for_missing(self) -> None:
-        from ankiforge.ui.progress_widget import _find_model_by_id
-
         from ankiforge.openrouter.models import Model
+        from ankiforge.ui.progress_widget import _find_model_by_id
 
         models = [Model(id="openai/gpt-4o", name="GPT-4o")]
         assert _find_model_by_id("nonexistent", models) is None
@@ -189,9 +154,8 @@ class TestFindModelById:
         assert _find_model_by_id("any", []) is None
 
     def test_returns_none_for_empty_id(self) -> None:
-        from ankiforge.ui.progress_widget import _find_model_by_id
-
         from ankiforge.openrouter.models import Model
+        from ankiforge.ui.progress_widget import _find_model_by_id
 
         models = [Model(id="openai/gpt-4o", name="GPT-4o")]
         assert _find_model_by_id("", models) is None
@@ -220,7 +184,7 @@ class TestEstimateAndFormatCost:
             image_model_id="",
             audio_model_id="",
         )
-        assert "$0.25" in result
+        assert "$0.250" in result
 
     def test_zero_cards_returns_zero_cost(self) -> None:
         from ankiforge.ui.progress_widget import _estimate_and_format_cost
@@ -237,12 +201,11 @@ class TestEstimateAndFormatCost:
             image_model_id="",
             audio_model_id="",
         )
-        assert "< $0.01" in result
+        assert "< $0.001" in result
 
     def test_passes_model_objects_to_estimate(self) -> None:
-        from ankiforge.ui.progress_widget import _estimate_and_format_cost
-
         from ankiforge.openrouter.models import Model
+        from ankiforge.ui.progress_widget import _estimate_and_format_cost
 
         text_model = Model(id="t1", name="Text")
         image_model = Model(id="i1", name="Image")

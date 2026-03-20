@@ -28,16 +28,18 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def _count_input_items(input_text: str, mode: GenerationMode) -> int:
+def _count_input_items(input_text: str, mode: GenerationMode, *, max_cards_per_paragraph: int = 3) -> int:
     """Подсчитывает количество элементов ввода по режиму.
 
     Args:
         input_text: Текст ввода.
         mode: Режим генерации.
+        max_cards_per_paragraph: Макс. карточек на абзац (для MATERIAL).
 
     Returns:
         Ожидаемое количество карточек.
     """
+
     text = input_text.strip()
     if not text:
         return 0
@@ -49,8 +51,12 @@ def _count_input_items(input_text: str, mode: GenerationMode) -> int:
         return len(items)
 
     if mode == GenerationMode.MATERIAL:
-        # ~1 карточка на 500 символов — грубая оценка
-        return max(1, len(text) // 500)
+        # Используем реальную логику разбиения из MaterialGenerator
+        from ankiforge.generators.material import MaterialGenerator
+
+        gen = MaterialGenerator.__new__(MaterialGenerator)
+        chunks = gen._prepare_paragraphs(text)
+        return len(chunks) * max_cards_per_paragraph
 
     # QUESTIONS, IMAGE, AUDIO — по строкам
     return len([line for line in text.splitlines() if line.strip()])
@@ -65,34 +71,9 @@ def _format_cost(cost: float) -> str:
     Returns:
         Форматированная строка.
     """
-    if cost < 0.01:
-        return "< $0.01"
-    return f"${cost:.2f}"
-
-
-def _format_summary(card_count: int, total_cost: float) -> str:
-    """Форматирует итог генерации.
-
-    Args:
-        card_count: Количество созданных карточек.
-        total_cost: Общая стоимость.
-
-    Returns:
-        Строка итога.
-    """
-    return f"Готово! Создано карточек: {card_count}. Стоимость: {_format_cost(total_cost)}"
-
-
-def _format_progress_text(progress: GenerationProgress) -> str:
-    """Форматирует текст прогресса.
-
-    Args:
-        progress: Текущий прогресс.
-
-    Returns:
-        Строка прогресса.
-    """
-    return f"Генерация: {progress.completed_cards} / {progress.total_cards} ({_format_cost(progress.current_cost)})"
+    if cost < 0.001:
+        return "< $0.001"
+    return f"${cost:.3f}"
 
 
 def _find_model_by_id(model_id: str, models: list[Model]) -> Model | None:
@@ -228,19 +209,16 @@ class GenerationWorker:
 
 
 # ---------------------------------------------------------------------------
-# ProgressWidget — виджет прогресса
+# ProgressWidget — виджет прогресса (только бар + Cancel)
 # ---------------------------------------------------------------------------
 
 
 class ProgressWidget:
-    """Виджет прогресса генерации: прогресс-бар, стоимость, кнопка отмены."""
+    """Виджет прогресса генерации: прогресс-бар и кнопка отмены."""
 
     def __init__(self, parent: object) -> None:
         from aqt.qt import (
-            QHBoxLayout,
-            QLabel,
             QProgressBar,
-            QPushButton,
             QVBoxLayout,
             QWidget,
         )
@@ -250,25 +228,10 @@ class ProgressWidget:
         layout.setContentsMargins(0, 8, 0, 0)
         self._widget.setLayout(layout)
 
-        # Оценка стоимости
-        self._cost_label = QLabel("")
-        layout.addWidget(self._cost_label)
-
-        # Прогресс-бар
         self._progress_bar = QProgressBar()
         self._progress_bar.setMinimum(0)
         self._progress_bar.setValue(0)
         layout.addWidget(self._progress_bar)
-
-        # Статус + кнопка отмены
-        status_row = QHBoxLayout()
-        self._status_label = QLabel("")
-        status_row.addWidget(self._status_label)
-
-        self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setFixedWidth(80)
-        status_row.addWidget(self._cancel_btn)
-        layout.addLayout(status_row)
 
         self._widget.setVisible(False)
 
@@ -277,43 +240,30 @@ class ProgressWidget:
         """Возвращает Qt-виджет для вставки в layout."""
         return self._widget
 
-    @property
-    def cancel_button(self) -> object:
-        """Возвращает кнопку Cancel для подключения сигналов."""
-        return self._cancel_btn
-
-    def show(self, estimated_cost: str, total_cards: int) -> None:
+    def show(self, total_cards: int) -> None:
         """Показывает виджет с начальными данными.
 
         Args:
-            estimated_cost: Форматированная оценка стоимости.
             total_cards: Ожидаемое количество карточек.
         """
-        self._cost_label.setText(estimated_cost)
         self._progress_bar.setMaximum(total_cards)
         self._progress_bar.setValue(0)
-        self._status_label.setText("Генерация: 0 / " + str(total_cards))
-        self._cancel_btn.setEnabled(True)
+        self._progress_bar.setFormat(f"0/{total_cards} карточек")
         self._widget.setVisible(True)
 
     def update_progress(self, progress: GenerationProgress) -> None:
-        """Обновляет прогресс-бар и статус.
+        """Обновляет прогресс-бар.
 
         Args:
             progress: Текущий прогресс.
         """
+        if progress.total_cards != self._progress_bar.maximum():
+            self._progress_bar.setMaximum(progress.total_cards)
         self._progress_bar.setValue(progress.completed_cards)
-        self._status_label.setText(_format_progress_text(progress))
-        self._cost_label.setText(f"Стоимость: {_format_cost(progress.current_cost)}")
+        self._progress_bar.setFormat(f"{progress.completed_cards}/{progress.total_cards} карточек")
 
-    def finish(self, summary: str) -> None:
-        """Показывает итог генерации.
-
-        Args:
-            summary: Текст итога.
-        """
-        self._status_label.setText(summary)
-        self._cancel_btn.setEnabled(False)
+    def finish(self) -> None:
+        """Финализирует виджет."""
 
     def hide(self) -> None:
         """Скрывает виджет."""
