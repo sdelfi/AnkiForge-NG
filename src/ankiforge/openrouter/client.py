@@ -117,14 +117,14 @@ class OpenRouterClient:
                 return resp
 
             except requests.Timeout as e:
-                last_exception = OpenRouterTimeoutError(f"Таймаут запроса: {e}")
+                last_exception = OpenRouterTimeoutError(f"Request timeout: {e}")
                 if attempt < self.max_retries:
                     self._sleep_backoff(attempt)
                     continue
                 raise last_exception from e
 
             except requests.ConnectionError as e:
-                last_exception = OpenRouterError(f"Ошибка соединения: {e}")
+                last_exception = OpenRouterError(f"Connection error: {e}")
                 if attempt < self.max_retries:
                     self._sleep_backoff(attempt)
                     continue
@@ -140,7 +140,7 @@ class OpenRouterClient:
                     continue
                 raise
 
-        msg = "Все попытки исчерпаны"
+        msg = "All retries exhausted"
         raise last_exception or OpenRouterError(msg)
 
     def _check_status(self, resp: requests.Response) -> None:
@@ -149,24 +149,24 @@ class OpenRouterClient:
             return
 
         if resp.status_code == 401:
-            raise OpenRouterAuthError("Невалидный API-ключ", status_code=401)
+            raise OpenRouterAuthError("Invalid API key", status_code=401)
 
         if resp.status_code == 402:
             raise OpenRouterInsufficientCreditsError(
-                "Недостаточно кредитов на OpenRouter — пополните баланс на openrouter.ai",
+                "Insufficient credits on OpenRouter — top up your balance at openrouter.ai",
                 status_code=402,
             )
 
         if resp.status_code == 429:
             retry_after = resp.headers.get("Retry-After")
             raise OpenRouterRateLimitError(
-                "Превышен rate limit",
+                "Rate limit exceeded",
                 retry_after=float(retry_after) if retry_after else None,
             )
 
         if resp.status_code in _RETRYABLE_STATUS_CODES:
             raise OpenRouterError(
-                f"Серверная ошибка: {resp.status_code}",
+                f"Server error: {resp.status_code}",
                 status_code=resp.status_code,
             )
 
@@ -185,10 +185,10 @@ class OpenRouterClient:
             else:
                 error_msg = resp.text[:400]
         except Exception:  # noqa: BLE001
-            error_msg = resp.text[:400] if resp.text else "нет тела ответа"
+            error_msg = resp.text[:400] if resp.text else "no response body"
 
         raise OpenRouterError(
-            f"Статус {resp.status_code}: {error_msg}",
+            f"Status {resp.status_code}: {error_msg}",
             status_code=resp.status_code,
         )
 
@@ -283,9 +283,9 @@ class OpenRouterClient:
                 stream=True,
             )
         except requests.Timeout as e:
-            raise OpenRouterTimeoutError(f"Таймаут запроса: {e}") from e
+            raise OpenRouterTimeoutError(f"Request timeout: {e}") from e
         except requests.ConnectionError as e:
-            raise OpenRouterError(f"Ошибка соединения: {e}") from e
+            raise OpenRouterError(f"Connection error: {e}") from e
 
         if resp.status_code != 200:
             self._check_status(resp)
@@ -313,13 +313,13 @@ class OpenRouterClient:
             self._extract_usage(last_chunk_data)
 
         if not audio_chunks:
-            raise OpenRouterError("API не вернул аудио данные в stream")
+            raise OpenRouterError("API returned no audio data in stream")
 
         combined_b64 = "".join(audio_chunks)
         try:
             pcm_data = base64.b64decode(combined_b64)
         except Exception as e:
-            raise OpenRouterError("Ошибка декодирования base64 аудио") from e
+            raise OpenRouterError("Failed to decode base64 audio") from e
 
         return self._pcm16_to_wav(pcm_data)
 
@@ -381,17 +381,17 @@ class OpenRouterClient:
         try:
             data = resp.json()
         except (ValueError, TypeError) as e:
-            raise OpenRouterError("Ошибка парсинг JSON-ответа") from e
+            raise OpenRouterError("Failed to parse JSON response") from e
 
         self._extract_usage(data)
 
         choices = data.get("choices", [])
         if not choices:
-            raise OpenRouterError("API вернул пустой choices")
+            raise OpenRouterError("API returned empty choices")
 
         content: str | None = choices[0].get("message", {}).get("content")
         if content is None:
-            raise OpenRouterError("API вернул пустой content")
+            raise OpenRouterError("API returned empty content")
 
         return content
 
@@ -405,13 +405,13 @@ class OpenRouterClient:
         try:
             data = resp.json()
         except (ValueError, TypeError) as e:
-            raise OpenRouterError("Ошибка парсинг JSON-ответа") from e
+            raise OpenRouterError("Failed to parse JSON response") from e
 
         self._extract_usage(data)
 
         choices = data.get("choices", [])
         if not choices:
-            raise OpenRouterError("API вернул пустой choices")
+            raise OpenRouterError("API returned empty choices")
 
         message = choices[0].get("message", {})
 
@@ -429,7 +429,7 @@ class OpenRouterClient:
                     url = part.get("image_url", {}).get("url", "")
                     return self._decode_base64_image(url)
 
-        raise OpenRouterError("API не вернул изображение")
+        raise OpenRouterError("API returned no image")
 
     @staticmethod
     def _decode_base64_image(url: str) -> bytes:
@@ -437,35 +437,35 @@ class OpenRouterClient:
         prefix = "base64,"
         idx = url.find(prefix)
         if idx == -1:
-            raise OpenRouterError("Ответ не содержит base64-данных изображения")
+            raise OpenRouterError("Response does not contain base64 image data")
 
         b64_data = url[idx + len(prefix) :]
         try:
             return base64.b64decode(b64_data)
         except Exception as e:
-            raise OpenRouterError("Ошибка декодирования base64 изображения") from e
+            raise OpenRouterError("Failed to decode base64 image") from e
 
     def _parse_audio_response(self, resp: requests.Response) -> bytes:
         """Извлекает аудио из JSON-ответа OpenRouter."""
         try:
             data = resp.json()
         except (ValueError, TypeError) as e:
-            raise OpenRouterError("Ошибка парсинг JSON-ответа") from e
+            raise OpenRouterError("Failed to parse JSON response") from e
 
         choices = data.get("choices", [])
         if not choices:
-            raise OpenRouterError("API вернул пустой choices")
+            raise OpenRouterError("API returned empty choices")
 
         message = choices[0].get("message", {})
         audio = message.get("audio")
         if not audio or not audio.get("data"):
-            raise OpenRouterError("API не вернул аудио данные")
+            raise OpenRouterError("API returned no audio data")
 
         b64_data: str = audio["data"]
         try:
             return base64.b64decode(b64_data)
         except Exception as e:
-            raise OpenRouterError("Ошибка декодирования base64 аудио") from e
+            raise OpenRouterError("Failed to decode base64 audio") from e
 
     def fetch_balance(self) -> dict[str, float]:
         """Запрашивает баланс аккаунта через OpenRouter API.
@@ -485,7 +485,7 @@ class OpenRouterClient:
         try:
             data = resp.json().get("data", {}) or {}
         except (ValueError, TypeError) as e:
-            raise OpenRouterError("Ошибка парсинг JSON-ответа") from e
+            raise OpenRouterError("Failed to parse JSON response") from e
 
         limit_raw = data.get("limit")
         usage_raw = data.get("usage")
@@ -531,7 +531,7 @@ class OpenRouterClient:
         try:
             data = resp.json()
         except (ValueError, TypeError) as e:
-            raise OpenRouterError("Ошибка парсинг JSON-ответа") from e
+            raise OpenRouterError("Failed to parse JSON response") from e
 
         models: list[Model] = []
         for item in data.get("data", []):
