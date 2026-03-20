@@ -4,6 +4,7 @@ from ankiforge.openrouter.client import OpenRouterClient
 from ankiforge.openrouter.exceptions import (
     OpenRouterAuthError,
     OpenRouterError,
+    OpenRouterInsufficientCreditsError,
     OpenRouterRateLimitError,
     OpenRouterTimeoutError,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "OpenRouterClient",
     "OpenRouterAuthError",
     "OpenRouterError",
+    "OpenRouterInsufficientCreditsError",
     "OpenRouterRateLimitError",
     "OpenRouterTimeoutError",
 ]

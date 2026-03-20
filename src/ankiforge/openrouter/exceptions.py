@@ -23,5 +23,9 @@ class OpenRouterRateLimitError(OpenRouterError):
         self.retry_after = retry_after
 
 
+class OpenRouterInsufficientCreditsError(OpenRouterError):
+    """Недостаточно кредитов на аккаунте (402)."""
+
+
 class OpenRouterTimeoutError(OpenRouterError):
     """Таймаут запроса."""
