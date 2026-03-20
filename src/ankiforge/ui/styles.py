@@ -118,6 +118,18 @@ QProgressBar::chunk {
     border-radius: 3px;
 }
 
+/* ── CheckBox ── */
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid palette(dark);
+    border-radius: 3px;
+}
+QCheckBox::indicator:checked {
+    background-color: palette(highlight);
+    border-color: palette(highlight);
+}
+
 /* ── Status colors (hardcoded by design) ── */
 QLabel#statusSuccess {
     color: #4caf50;

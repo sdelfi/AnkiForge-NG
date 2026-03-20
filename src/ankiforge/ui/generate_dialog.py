@@ -27,6 +27,7 @@ from ankiforge.ui.progress_widget import (
     _count_input_items,
     _format_cost,
 )
+from ankiforge.ui.styles import DIALOG_QSS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -612,105 +613,6 @@ def _save_cards_to_deck(
 
 
 # ---------------------------------------------------------------------------
-# QSS — стили для диалогов (palette-friendly, dark/light)
-# ---------------------------------------------------------------------------
-
-_DIALOG_QSS = """
-QGroupBox {
-    font-weight: bold;
-    border: none;
-    margin-top: 14px;
-    padding: 8px 0 0 0;
-}
-QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 2px;
-    padding: 0 4px;
-}
-QPlainTextEdit {
-    border: 1px solid palette(dark);
-    border-radius: 4px;
-    padding: 6px;
-}
-QPlainTextEdit:focus {
-    border-color: palette(highlight);
-}
-QComboBox {
-    border: 1px solid palette(dark);
-    border-radius: 4px;
-    padding: 4px 8px;
-    min-height: 28px;
-}
-QComboBox:focus {
-    border-color: palette(highlight);
-}
-QComboBox QAbstractItemView {
-    selection-background-color: palette(highlight);
-    selection-color: palette(highlighted-text);
-    outline: none;
-}
-QPushButton#generateBtn {
-    background-color: palette(highlight);
-    color: palette(highlighted-text);
-    border: none;
-    border-radius: 5px;
-    padding: 8px 28px;
-    font-weight: bold;
-    font-size: 13px;
-    min-width: 130px;
-}
-QPushButton#generateBtn:disabled {
-    background-color: palette(dark);
-    color: palette(mid);
-}
-QPushButton#againBtn {
-    background-color: palette(dark);
-    color: palette(text);
-    border: 1px solid palette(mid);
-    border-radius: 5px;
-    padding: 8px 18px;
-    font-size: 13px;
-    min-width: 90px;
-}
-QPushButton#againBtn:hover {
-    background-color: palette(mid);
-}
-QPushButton#selectBtn {
-    background-color: palette(dark);
-    color: palette(text);
-    border: none;
-    border-radius: 4px;
-    padding: 6px 18px;
-    font-weight: bold;
-}
-QPushButton#selectBtn:hover {
-    background-color: palette(highlight);
-    color: palette(highlighted-text);
-}
-QProgressBar {
-    border: 1px solid palette(dark);
-    border-radius: 4px;
-    text-align: center;
-    min-height: 18px;
-}
-QProgressBar::chunk {
-    background-color: palette(highlight);
-    border-radius: 3px;
-}
-QCheckBox::indicator {
-    width: 16px;
-    height: 16px;
-    border: 1px solid palette(dark);
-    border-radius: 3px;
-}
-QCheckBox::indicator:checked {
-    background-color: palette(highlight);
-    border-color: palette(highlight);
-}
-"""
-
-
-# ---------------------------------------------------------------------------
 # GenerateDialog — выбор режима
 # ---------------------------------------------------------------------------
 
@@ -744,9 +646,10 @@ class GenerateDialog:
         self._dialog = QDialog(mw)
         self._dialog.setWindowTitle("AnkiForge — Generate Cards")
         self._dialog.setMinimumWidth(480)
-        self._dialog.setStyleSheet(_DIALOG_QSS)
+        self._dialog.setStyleSheet(DIALOG_QSS)
 
         layout = QVBoxLayout()
+        layout.setSpacing(16)
         self._dialog.setLayout(layout)
 
         # --- Заголовок ---
@@ -762,6 +665,7 @@ class GenerateDialog:
             info = _get_mode_info(mode)
 
             btn_layout = QHBoxLayout()
+            btn_layout.setSpacing(12)
 
             # Иконка
             icon_label = QLabel(info["icon"])
@@ -773,6 +677,7 @@ class GenerateDialog:
 
             # Текст (title + subtitle)
             text_layout = QVBoxLayout()
+            text_layout.setSpacing(2)
             mode_title = QLabel(info["title"])
             mode_title_font = QFont()
             mode_title_font.setBold(True)
@@ -780,7 +685,7 @@ class GenerateDialog:
             text_layout.addWidget(mode_title)
 
             mode_subtitle = QLabel(info["subtitle"])
-            mode_subtitle.setStyleSheet("color: #999999;")
+            mode_subtitle.setStyleSheet("color: palette(mid);")
             text_layout.addWidget(mode_subtitle)
             btn_layout.addLayout(text_layout)
 
@@ -888,10 +793,10 @@ class InputDialog:
         info = _get_mode_info(mode)
         self._dialog.setWindowTitle(f"AnkiForge — {info['title']}")
         self._dialog.setMinimumWidth(520)
-        self._dialog.setStyleSheet(_DIALOG_QSS)
+        self._dialog.setStyleSheet(DIALOG_QSS)
 
         layout = QVBoxLayout()
-        layout.setSpacing(10)
+        layout.setSpacing(12)
         layout.setContentsMargins(14, 14, 14, 14)
         self._dialog.setLayout(layout)
 
@@ -904,7 +809,7 @@ class InputDialog:
         layout.addWidget(header)
 
         subtitle = QLabel(info["subtitle"])
-        subtitle.setStyleSheet("color: #999999;")
+        subtitle.setStyleSheet("color: palette(mid);")
         layout.addWidget(subtitle)
 
         # === Секция 1: Данные для генерации ===
@@ -952,7 +857,7 @@ class InputDialog:
         settings_form.addRow("Deck:", self._deck_combo)
 
         deck_hint = QLabel("Pick an existing deck from the list, or type a new name to create one")
-        deck_hint.setStyleSheet("color: #999999; font-size: 11px;")
+        deck_hint.setStyleSheet("color: palette(mid); font-size: 11px;")
         deck_hint.setWordWrap(True)
         settings_form.addRow("", deck_hint)
 
@@ -1119,7 +1024,7 @@ class InputDialog:
 
         # --- Единственная строка статуса/стоимости ---
         self._cost_label = QLabel("")
-        self._cost_label.setStyleSheet("color: #999999;")
+        self._cost_label.setStyleSheet("color: palette(mid);")
         layout.addWidget(self._cost_label)
 
         # Обновляем оценку при изменении текста
@@ -1265,7 +1170,7 @@ class InputDialog:
 
     def _update_cost_estimate(self) -> None:
         """Обновляет оценку стоимости из кэшированного pricing в конфиге."""
-        self._cost_label.setStyleSheet("color: #999999;")
+        self._cost_label.setStyleSheet("color: palette(mid);")
         text = self._input_text.toPlainText()
         card_count = _count_input_items(text, self._mode, max_cards_per_paragraph=self._get_max_cards_per_paragraph())
         if card_count == 0:
@@ -1421,7 +1326,7 @@ class InputDialog:
         if cost_text:
             parts.append(f"spent: {cost_text}")
         self._cost_label.setText(" · ".join(parts))
-        self._cost_label.setStyleSheet("color: #999999;")
+        self._cost_label.setStyleSheet("color: palette(mid);")
 
     def _on_generation_finished(self, cards: list[GeneratedCard]) -> None:
         """Обработка успешного завершения генерации."""
