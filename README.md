@@ -63,7 +63,7 @@ It works with **any model** available on OpenRouter (GPT-4o, Claude, Gemini, Lla
 
 1. Open Anki
 2. Go to **Tools → Add-ons → Get Add-ons...**
-3. Paste the add-on code: `XXXXXXXXX` *(coming soon)*
+3. Paste the add-on code: `1482895298`
 4. Restart Anki
 
 ### Manual install
@@ -120,7 +120,7 @@ AnkiForge is **free**. You only pay for AI usage through OpenRouter.
 ## Development
 
 ```bash
-git clone https://github.com/anthropics/AnkiForge.git
+git clone https://github.com/Xpom1/AnkiForge.git
 cd AnkiForge
 
 uv sync                          # install dependencies

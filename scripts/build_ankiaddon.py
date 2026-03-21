@@ -46,26 +46,14 @@ def build() -> Path:
     output = DIST / f"AnkiForge_v{version}.ankiaddon"
 
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
-        # manifest.json — to archive root
-        manifest = SRC_PKG / "manifest.json"
-        zf.write(manifest, "manifest.json")
-
-        # config.json — to archive root (Anki expects it next to manifest)
-        config = SRC_PKG / "config.json"
-        if config.exists():
-            zf.write(config, "config.json")
-
-        # ankiforge/ package — all code
+        # All files go to archive root (AnkiWeb requirement: no top-level folder)
         for file in sorted(SRC_PKG.rglob("*")):
             if not file.is_file():
                 continue
             if should_exclude(file):
                 continue
-            # manifest.json and config.json already added to root
-            if file.name in ("manifest.json", "config.json"):
-                continue
 
-            arcname = str(file.relative_to(SRC_PKG.parent))
+            arcname = str(file.relative_to(SRC_PKG))
             zf.write(file, arcname)
 
         names = zf.namelist()
