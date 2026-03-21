@@ -25,4 +25,11 @@ def _register_addon() -> None:
     gui_hooks.main_window_did_init.append(on_main_window_init)
 
 
-_register_addon()
+# Auto-register when used as dev symlink (addons21/ankiforge/).
+# In packaged mode, the root __init__.py entry point calls _register_addon() instead.
+if __name__ == "ankiforge":
+    from pathlib import Path as _Path
+
+    _addon_dir = _Path(__file__).parent
+    if _addon_dir.parent.name == "addons21":
+        _register_addon()

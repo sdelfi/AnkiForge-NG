@@ -45,15 +45,36 @@ def build() -> Path:
 
     output = DIST / f"AnkiForge_v{version}.ankiaddon"
 
+    # Thin entry point that adds addon dir to sys.path so `from ankiforge.xxx` works
+    entry_point = (
+        "import sys, os\n"
+        "sys.path.insert(0, os.path.dirname(__file__))\n"
+        "from ankiforge import _register_addon\n"
+        "_register_addon()\n"
+    )
+
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
-        # All files go to archive root (AnkiWeb requirement: no top-level folder)
+        # Root __init__.py — thin entry point
+        zf.writestr("__init__.py", entry_point)
+
+        # manifest.json and config.json — to archive root
+        manifest = SRC_PKG / "manifest.json"
+        zf.write(manifest, "manifest.json")
+
+        config = SRC_PKG / "config.json"
+        if config.exists():
+            zf.write(config, "config.json")
+
+        # ankiforge/ package — all code inside subfolder
         for file in sorted(SRC_PKG.rglob("*")):
             if not file.is_file():
                 continue
             if should_exclude(file):
                 continue
+            if file.name in ("manifest.json", "config.json"):
+                continue
 
-            arcname = str(file.relative_to(SRC_PKG))
+            arcname = "ankiforge/" + str(file.relative_to(SRC_PKG))
             zf.write(file, arcname)
 
         names = zf.namelist()

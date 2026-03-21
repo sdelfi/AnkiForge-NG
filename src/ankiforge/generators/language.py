@@ -267,7 +267,13 @@ class LanguageGenerator:
             return f"{custom_prompt}\n\nWord: {word}\nLanguage: {language}"
 
         ipa_note = ' Include "ipa" field.' if include_ipa else " Omit the ipa field."
-        return f"{_DEFAULT_SYSTEM_PROMPT}\n{ipa_note}\n\nLanguage: {language}\nWord: {word}"
+        lang_note = (
+            f"\n\nIMPORTANT: The definition and example MUST be written in {language}. "
+            f"Do NOT write in English unless Language is 'en'."
+            if language != "en"
+            else ""
+        )
+        return f"{_DEFAULT_SYSTEM_PROMPT}\n{ipa_note}{lang_note}\n\nLanguage: {language}\nWord: {word}"
 
     def _parse_words(self, text: str) -> list[str]:
         """Parse words from text (by lines or comma-separated)."""

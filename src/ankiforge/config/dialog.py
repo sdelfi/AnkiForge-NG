@@ -100,11 +100,13 @@ def _make_searchable_combo() -> QComboBox:
     Returns:
         Editable QComboBox with QCompleter (MatchContains, CaseInsensitive).
     """
-    from aqt.qt import QComboBox, QCompleter, Qt
+    from aqt.qt import QComboBox, QCompleter, QSizePolicy, Qt
 
     combo = QComboBox()
     combo.setEditable(True)
     combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+    combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    combo.setMinimumWidth(300)
     combo.lineEdit().setPlaceholderText("Start typing a model name...")
 
     completer = QCompleter()

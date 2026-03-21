@@ -15,7 +15,18 @@ if TYPE_CHECKING:
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
 
 _OPENROUTER_AUTH_URL = "https://openrouter.ai/api/v1/auth/key"
-_ADDON_MODULE = "ankiforge"
+
+
+def _detect_addon_module() -> str:
+    """Detect addon folder name by walking up until we find the addons21 parent."""
+    path = Path(__file__).resolve()
+    for parent in path.parents:
+        if parent.parent.name == "addons21":
+            return parent.name
+    return "ankiforge"
+
+
+_ADDON_MODULE = _detect_addon_module()
 
 
 def _get_mw() -> AnkiQt:

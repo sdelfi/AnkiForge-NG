@@ -264,7 +264,7 @@ def _log_cost(mode: GenerationMode, card_count: int, cost: float) -> None:
 
         if mw is None or mw.addonManager is None:
             return
-        addon_dir = Path(mw.addonManager.addonsFolder("ankiforge"))
+        addon_dir = Path(__file__).parent.parent
     except Exception:  # noqa: BLE001
         return
 
