@@ -17,5 +17,9 @@ htmlcov/
 # IDE
 .ralph/
 
-# Anki runtime (содержит API-ключи)
+# OS
+.DS_Store
+
+# Anki runtime (contains API keys)
 src/ankiforge/meta.json
+src/ankiforge/cost_log.json
