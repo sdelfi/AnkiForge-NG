@@ -1,4 +1,4 @@
-"""Диалог выбора режима генерации и ввода данных для генерации карточек."""
+"""Mode selection and input dialog for card generation."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Информация о режимах (тестируемая без Qt)
+# Mode info (testable without Qt)
 # ---------------------------------------------------------------------------
 
 _MODE_INFO: dict[GenerationMode, dict[str, str]] = {
@@ -89,71 +89,71 @@ _INPUT_PLACEHOLDERS: dict[GenerationMode, str] = {
 
 
 def _should_open_settings_first() -> bool:
-    """Проверяет, нужно ли открыть настройки перед генерацией.
+    """Check if settings should be opened before generation.
 
     Returns:
-        True если API-ключ не настроен.
+        True if API key is not configured.
     """
     return not is_configured()
 
 
 def _get_mode_info(mode: GenerationMode) -> dict[str, str]:
-    """Возвращает информацию о режиме генерации.
+    """Return generation mode info.
 
     Args:
-        mode: Режим генерации.
+        mode: Generation mode.
 
     Returns:
-        Словарь с title, subtitle и icon.
+        Dict with title, subtitle, and icon.
     """
     return _MODE_INFO[mode]
 
 
 def _get_input_placeholder(mode: GenerationMode) -> str:
-    """Возвращает placeholder-текст для поля ввода в зависимости от режима.
+    """Return placeholder text for the input field depending on mode.
 
     Args:
-        mode: Режим генерации.
+        mode: Generation mode.
 
     Returns:
-        Текст-подсказка.
+        Placeholder text.
     """
     return _INPUT_PLACEHOLDERS[mode]
 
 
 def _should_show_images_checkbox(mode: GenerationMode) -> bool:
-    """Определяет, нужно ли показывать чекбокс 'Добавить картинки'.
+    """Determine if 'Add images' checkbox should be shown.
 
     Args:
-        mode: Режим генерации.
+        mode: Generation mode.
 
     Returns:
-        True только для режима MATERIAL.
+        True only for MATERIAL mode.
     """
     return mode == GenerationMode.MATERIAL
 
 
 def _should_show_custom_prompt(mode: GenerationMode) -> bool:
-    """Определяет, нужно ли показывать поле кастомного промпта.
+    """Determine if custom prompt field should be shown.
 
     Args:
-        mode: Режим генерации.
+        mode: Generation mode.
 
     Returns:
-        True для всех режимов.
+        True for all modes.
     """
     return True
 
 
 def _get_deck_name_from_combo(typed_text: str, existing_decks: set[str]) -> tuple[str, bool]:
-    """Определяет имя колоды и нужно ли создавать новую.
+    """Determine deck name and whether to create a new one.
 
     Args:
-        typed_text: Текст из editable combo.
-        existing_decks: Набор существующих колод.
+        typed_text: Text from editable combo.
+        existing_decks: Set of existing decks.
 
     Returns:
-        (deck_name, is_new) — имя колоды и флаг создания новой.
+        (deck_name, is_new) — deck name and new creation flag.
     """
     name = typed_text.strip()
     if not name:
@@ -170,29 +170,29 @@ def _estimate_cost_from_config(
     material_options: MaterialOptions | None = None,
     image_size: str = "auto",
 ) -> float | None:
-    """Расчёт стоимости из кэшированного pricing в конфиге.
+    """Estimate cost from cached pricing in config.
 
     Args:
-        config: Конфигурация с pricing моделей.
-        mode: Режим генерации.
-        card_count: Количество карточек.
-        language_options: Опции генерации для language режима.
+        config: Config with model pricing.
+        mode: Generation mode.
+        card_count: Number of cards.
+        language_options: Generation options for language mode.
 
     Returns:
-        Стоимость в долларах или None если pricing не загружен.
+        Cost in USD or None if pricing is not loaded.
     """
     if card_count <= 0:
         return 0.0
 
-    # Средние значения токенов/символов на вызов
+    # Average tokens/chars per call
     avg_prompt_tokens = 200
     avg_completion_tokens = 150
     avg_audio_chars = 100
 
-    # Средняя стоимость генерации одного изображения по размеру (USD).
-    # OpenRouter API не отдаёт image output pricing (/models не содержит image_output),
-    # поэтому используем эмпирические средние на основе реальных запросов.
-    # Примеры: Gemini 2.5 Flash Image 0.5K=$0.02, 1K=$0.04; Gemini 3.1 Flash 1K=$0.07
+    # Average image generation cost by size (USD).
+    # OpenRouter API doesn't return image output pricing (/models lacks image_output),
+    # so we use empirical averages based on real requests.
+    # Examples: Gemini 2.5 Flash Image 0.5K=$0.02, 1K=$0.04; Gemini 3.1 Flash 1K=$0.07
     _avg_image_cost_by_size: dict[str, float] = {
         "0.5K": 0.02,
         "1K": 0.04,
@@ -205,7 +205,7 @@ def _estimate_cost_from_config(
     ip = config.image_model_pricing
     ap = config.audio_model_pricing
 
-    # Если нет pricing — не можем посчитать
+    # If no pricing — can't calculate
     mode_val = mode.value
     if tp is None and mode_val in ("questions", "language", "material", "image", "audio"):
         return None
@@ -213,7 +213,7 @@ def _estimate_cost_from_config(
     cost = 0.0
 
     if tp is not None and mode_val in ("questions", "language", "material", "image", "audio"):
-        text_multiplier = 2 if mode_val == "material" else 1  # map-reduce: 2 вызова на абзац
+        text_multiplier = 2 if mode_val == "material" else 1  # map-reduce: 2 calls per paragraph
         cost += (tp.prompt * avg_prompt_tokens + tp.completion * avg_completion_tokens) * card_count * text_multiplier
 
     if ip is not None and mode_val in ("language", "image", "material"):
@@ -248,12 +248,12 @@ def _estimate_cost_from_config(
 
 
 def _log_cost(mode: GenerationMode, card_count: int, cost: float) -> None:
-    """Записывает расход в лог-файл.
+    """Write cost to log file.
 
     Args:
-        mode: Режим генерации.
-        card_count: Количество карточек.
-        cost: Стоимость в долларах.
+        mode: Generation mode.
+        card_count: Number of cards.
+        cost: Cost in USD.
     """
     import json
     from datetime import datetime
@@ -292,13 +292,13 @@ def _log_cost(mode: GenerationMode, card_count: int, cost: float) -> None:
 
 
 def _get_default_custom_prompt(mode: GenerationMode = GenerationMode.LANGUAGE) -> str:
-    """Возвращает дефолтный промпт для указанного режима.
+    """Return default prompt for the specified mode.
 
     Args:
-        mode: Режим генерации.
+        mode: Generation mode.
 
     Returns:
-        Текст промпта по умолчанию.
+        Default prompt text.
     """
     if mode == GenerationMode.LANGUAGE:
         from ankiforge.generators.language import _DEFAULT_SYSTEM_PROMPT
@@ -353,7 +353,7 @@ def _add_help_icon(widget: object, tooltip: str) -> QWidget:
 
 
 # ---------------------------------------------------------------------------
-# Фабрика генераторов (тестируемая без Qt)
+# Generator factory (testable without Qt)
 # ---------------------------------------------------------------------------
 
 
@@ -369,21 +369,21 @@ def _create_generator(
     image_size: str = "auto",
     voice: str = "alloy",
 ) -> _CardGenerator:
-    """Создаёт генератор карточек по режиму.
+    """Create a card generator for the given mode.
 
     Args:
-        mode: Режим генерации.
-        client: OpenRouter клиент.
-        text_model: ID текстовой модели.
-        image_model: ID image модели.
-        audio_model: ID audio модели.
-        include_images: Добавлять ли картинки (для material).
-        config: Конфигурация с pricing (для real-time cost tracking).
-        image_size: Размер изображения (для image/material).
-        voice: Голос диктора (для audio).
+        mode: Generation mode.
+        client: OpenRouter client.
+        text_model: Text model ID.
+        image_model: Image model ID.
+        audio_model: Audio model ID.
+        include_images: Whether to add images (for material).
+        config: Config with pricing (for real-time cost tracking).
+        image_size: Image size (for image/material).
+        voice: Narrator voice (for audio).
 
     Returns:
-        Экземпляр генератора.
+        Generator instance.
     """
     if mode == GenerationMode.QUESTIONS:
         from ankiforge.generators.questions import QuestionsGenerator
@@ -425,7 +425,7 @@ def _create_generator(
 
 
 # ---------------------------------------------------------------------------
-# Сборка CardRequest (тестируемая без Qt)
+# CardRequest building (testable without Qt)
 # ---------------------------------------------------------------------------
 
 
@@ -443,26 +443,26 @@ def _build_card_request(
     voice: str = "alloy",
     image_size: str = "auto",
 ) -> CardRequest:
-    """Собирает CardRequest из параметров формы.
+    """Build CardRequest from form parameters.
 
     Args:
-        mode: Режим генерации.
-        input_text: Введённый текст.
-        deck_name: Имя колоды.
-        create_new_deck: Создать новую колоду.
-        include_images: Добавлять картинки (для material).
-        language: Язык карточек.
-        custom_prompt: Кастомный промпт.
-        language_options: Опции генерации для language режима.
-        material_options: Опции генерации для material режима.
-        voice: Голос диктора (для audio).
-        image_size: Размер изображения (для image/material).
+        mode: Generation mode.
+        input_text: Entered text.
+        deck_name: Deck name.
+        create_new_deck: Create new deck.
+        include_images: Add images (for material).
+        language: Card language.
+        custom_prompt: Custom prompt.
+        language_options: Generation options for language mode.
+        material_options: Generation options for material mode.
+        voice: Narrator voice (for audio).
+        image_size: Image size (for image/material).
 
     Returns:
         CardRequest.
 
     Raises:
-        ValueError: Если данные невалидны.
+        ValueError: If data is invalid.
     """
     if not input_text.strip():
         msg = "Enter data to generate"
@@ -471,7 +471,7 @@ def _build_card_request(
         msg = "Specify a deck name"
         raise ValueError(msg)
 
-    # Пустой/пробельный custom_prompt → None
+    # Empty/whitespace custom_prompt → None
     cleaned_prompt = custom_prompt.strip() if custom_prompt and custom_prompt.strip() else None
 
     return CardRequest(
@@ -490,18 +490,18 @@ def _build_card_request(
 
 
 # ---------------------------------------------------------------------------
-# Сохранение карточек в колоду (тестируемое без Qt)
+# Saving cards to deck (testable without Qt)
 # ---------------------------------------------------------------------------
 
 
 def _markdown_to_html(text: str) -> str:
-    """Конвертирует markdown code blocks и inline code в HTML для Anki.
+    """Convert markdown code blocks and inline code to HTML for Anki.
 
     Args:
-        text: Текст с markdown-разметкой.
+        text: Text with markdown markup.
 
     Returns:
-        HTML-строка с ``<pre><code>`` и ``<code>`` тегами.
+        HTML string with ``<pre><code>`` and ``<code>`` tags.
     """
     import re as _re
 
@@ -526,7 +526,7 @@ def _markdown_to_html(text: str) -> str:
 
     result = _re.sub(r"`([^`]+)`", _replace_inline, result)
 
-    # 3. Newlines → <br> ТОЛЬКО вне <pre>...</pre>
+    # 3. Newlines → <br> ONLY outside <pre>...</pre>
     parts = _re.split(r"(<pre>.*?</pre>)", result, flags=_re.DOTALL)
     for i, part in enumerate(parts):
         if not part.startswith("<pre>"):
@@ -535,13 +535,13 @@ def _markdown_to_html(text: str) -> str:
 
 
 def _build_note_fields(card: GeneratedCard) -> dict[str, str]:
-    """Формирует словарь полей для add_note из GeneratedCard.
+    """Build field dict for add_note from GeneratedCard.
 
     Args:
-        card: Сгенерированная карточка.
+        card: Generated card.
 
     Returns:
-        Словарь {имя_поля: значение}.
+        Dict of {field_name: value}.
     """
     if card.note_type == LANGUAGE_NOTE_TYPE_NAME:
         audio_ref = ""
@@ -618,12 +618,12 @@ def _save_cards_to_deck(
     *,
     create_new: bool,
 ) -> None:
-    """Сохраняет сгенерированные карточки в колоду Anki.
+    """Save generated cards to an Anki deck.
 
     Args:
-        cards: Список карточек.
-        deck_name: Имя целевой колоды.
-        create_new: Создать колоду если не существует.
+        cards: List of cards.
+        deck_name: Target deck name.
+        create_new: Create deck if it doesn't exist.
     """
     if not cards:
         return
@@ -637,22 +637,22 @@ def _save_cards_to_deck(
 
 
 # ---------------------------------------------------------------------------
-# GenerateDialog — выбор режима
+# GenerateDialog — mode selection
 # ---------------------------------------------------------------------------
 
 
 class GenerateDialog:
-    """Диалог выбора режима генерации карточек.
+    """Card generation mode selection dialog.
 
-    Показывает 5 режимов с описаниями и иконками.
-    Пользователь выбирает режим — диалог возвращает выбранный GenerationMode.
+    Shows 5 modes with descriptions and icons.
+    User selects a mode — dialog returns the chosen GenerationMode.
     """
 
     def __init__(self, mw: AnkiQt) -> None:
-        """Инициализация диалога выбора режима.
+        """Initialize mode selection dialog.
 
         Args:
-            mw: Главное окно Anki.
+            mw: Anki main window.
         """
         from aqt.qt import (
             QDialog,
@@ -675,13 +675,13 @@ class GenerateDialog:
         self._dialog.setMinimumWidth(480)
         self._dialog.setStyleSheet(DIALOG_QSS)
 
-        # Основной layout диалога: scroll + кнопки внизу
+        # Main dialog layout: scroll + buttons at the bottom
         dialog_layout = QVBoxLayout()
         dialog_layout.setContentsMargins(0, 0, 0, 0)
         dialog_layout.setSpacing(0)
         self._dialog.setLayout(dialog_layout)
 
-        # Содержимое внутри scroll area
+        # Content inside scroll area
         from aqt.qt import QWidget as _QWidget
 
         content = _QWidget()
@@ -690,7 +690,7 @@ class GenerateDialog:
         layout.setContentsMargins(14, 14, 14, 6)
         content.setLayout(layout)
 
-        # --- Заголовок ---
+        # --- Title ---
         title_label = QLabel("Choose generation mode")
         title_font = QFont()
         title_font.setPointSize(14)
@@ -698,7 +698,7 @@ class GenerateDialog:
         title_label.setFont(title_font)
         layout.addWidget(title_label)
 
-        # --- Кнопки режимов (вся строка кликабельная) ---
+        # --- Mode buttons (entire row is clickable) ---
         _row_qss = (
             "QFrame#modeRow {"
             "  border: 1px solid palette(mid);"
@@ -720,7 +720,7 @@ class GenerateDialog:
             row.setFrameShape(QFrame.Shape.StyledPanel)
             row.setCursor(Qt.CursorShape.PointingHandCursor)
             row.setStyleSheet(_row_qss)
-            # Делаем клик по всему row через mousePressEvent
+            # Make entire row clickable via mousePressEvent
             row.mousePressEvent = lambda _event, h=handler: h()
 
             row_layout = QHBoxLayout()
@@ -728,7 +728,7 @@ class GenerateDialog:
             row_layout.setContentsMargins(12, 10, 12, 10)
             row.setLayout(row_layout)
 
-            # Иконка
+            # Icon
             icon_label = QLabel(info["icon"])
             icon_font = QFont()
             icon_font.setPointSize(24)
@@ -737,7 +737,7 @@ class GenerateDialog:
             icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             row_layout.addWidget(icon_label)
 
-            # Текст (title + subtitle)
+            # Text (title + subtitle)
             text_layout = QVBoxLayout()
             text_layout.setSpacing(2)
             mode_title = QLabel(info["title"])
@@ -759,10 +759,10 @@ class GenerateDialog:
 
         layout.addStretch()
 
-        # Scroll area с содержимым
+        # Scroll area with content
         dialog_layout.addWidget(wrap_in_scroll_area(content))
 
-        # --- Настройки / Отмена (вне scroll, всегда видны) ---
+        # --- Settings / Cancel (outside scroll, always visible) ---
         buttons_layout = QHBoxLayout()
         buttons_layout.setContentsMargins(14, 6, 14, 14)
         settings_btn = QPushButton("Settings")
@@ -786,12 +786,12 @@ class GenerateDialog:
         buttons_layout.addWidget(cancel_btn)
         dialog_layout.addLayout(buttons_layout)
 
-        # Масштабируем под экран
+        # Scale to screen size
         w, h = get_dialog_size(width_pct=0.35, height_pct=0.55, min_w=480, min_h=400)
         self._dialog.resize(w, h)
 
     def _on_donate(self) -> None:
-        """Показывает диалог с крипто-адресом для доната."""
+        """Show dialog with crypto address for donation."""
         from aqt.qt import QApplication, QDialog, QLabel, QPushButton, Qt, QVBoxLayout
 
         address = "0x34f58CF2BE6073f12b2c3c6aE9f8c31983A3f5fE"
@@ -831,13 +831,13 @@ class GenerateDialog:
         dlg.exec()
 
     def _on_open_settings(self) -> None:
-        """Открывает диалог настроек."""
+        """Open settings dialog."""
         from ankiforge.config.dialog import SettingsDialog
 
         SettingsDialog(self._mw).run()
 
     def _make_mode_handler(self, mode: GenerationMode) -> Callable[[], None]:
-        """Создаёт обработчик для кнопки режима.
+        """Create handler for mode button.
 
         Args:
             mode: Режим генерации.
@@ -854,11 +854,11 @@ class GenerateDialog:
 
     @property
     def selected_mode(self) -> GenerationMode | None:
-        """Возвращает выбранный режим или None если отменено."""
+        """Return selected mode or None if cancelled."""
         return self._selected_mode
 
     def run(self) -> GenerationMode | None:
-        """Показывает диалог модально.
+        """Show dialog modally.
 
         Returns:
             Выбранный GenerationMode или None если пользователь отменил.
@@ -870,19 +870,19 @@ class GenerateDialog:
 
 
 # ---------------------------------------------------------------------------
-# InputDialog — ввод данных и запуск генерации
+# InputDialog — data input and generation launch
 # ---------------------------------------------------------------------------
 
 
 class InputDialog:
-    """Диалог ввода данных для генерации карточек.
+    """Data input dialog for card generation.
 
     Показывает: текстовое поле ввода, выбор/создание колоды (editable combo),
     чекбокс картинок (для material), кнопку Generate.
     """
 
     def __init__(self, mw: AnkiQt, mode: GenerationMode) -> None:
-        """Инициализация диалога ввода данных.
+        """Initialize data input dialog.
 
         Args:
             mw: Главное окно Anki.
@@ -919,20 +919,20 @@ class InputDialog:
         self._dialog.setMinimumWidth(520)
         self._dialog.setStyleSheet(DIALOG_QSS)
 
-        # Основной layout диалога: scroll + кнопки внизу
+        # Main dialog layout: scroll + buttons at the bottom
         dialog_layout = QVBoxLayout()
         dialog_layout.setContentsMargins(0, 0, 0, 0)
         dialog_layout.setSpacing(0)
         self._dialog.setLayout(dialog_layout)
 
-        # Содержимое внутри scroll area
+        # Content inside scroll area
         content = _QWidget()
         layout = QVBoxLayout()
         layout.setSpacing(16)
         layout.setContentsMargins(14, 14, 14, 6)
         content.setLayout(layout)
 
-        # --- Заголовок ---
+        # --- Title ---
         header = QLabel(info["title"])
         header_font = QFont()
         header_font.setPointSize(13)
@@ -944,7 +944,7 @@ class InputDialog:
         subtitle.setStyleSheet("color: palette(text); font-size: 11px;")
         layout.addWidget(subtitle)
 
-        # === Секция 1: Данные для генерации ===
+        # === Section 1: Generation data ===
         input_group = QGroupBox("Generation input")
         input_vlayout = QVBoxLayout()
         input_vlayout.setContentsMargins(8, 6, 8, 8)
@@ -955,13 +955,13 @@ class InputDialog:
         input_group.setLayout(input_vlayout)
         layout.addWidget(input_group)
 
-        # === Секция 2: Настройки ===
+        # === Section 2: Settings ===
         settings_group = QGroupBox("Settings")
         settings_form = QFormLayout()
         settings_form.setSpacing(8)
         settings_form.setContentsMargins(8, 6, 8, 8)
 
-        # Editable combo — выбор существующей или ввод новой колоды
+        # Editable combo — select existing or type new deck
         self._deck_combo = QComboBox()
         self._deck_combo.setEditable(True)
         self._deck_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -983,7 +983,7 @@ class InputDialog:
         except RuntimeError:
             pass
 
-        # Не выбираем колоду автоматически — пусть пользователь вводит сам
+        # Don't auto-select a deck — let the user type
         self._deck_combo.setCurrentIndex(-1)
         deck_completer.setModel(self._deck_combo.model())
         settings_form.addRow("Deck:", self._deck_combo)
@@ -993,7 +993,7 @@ class InputDialog:
         deck_hint.setWordWrap(True)
         settings_form.addRow("", deck_hint)
 
-        # Язык карточек
+        # Card language
         self._language_combo = QComboBox()
         self._language_combo.addItem("English", "en")
         self._language_combo.addItem("Russian", "ru")
@@ -1003,7 +1003,7 @@ class InputDialog:
         self._language_combo.addItem("日本語", "ja")
         self._language_combo.addItem("中文", "zh")
 
-        # Выставляем язык из конфига
+        # Set language from config
         config = get_config()
         for i in range(self._language_combo.count()):
             if self._language_combo.itemData(i) == config.language:
@@ -1011,13 +1011,13 @@ class InputDialog:
                 break
         settings_form.addRow("Language:", self._language_combo)
 
-        # Чекбокс картинок — создаём здесь, но добавляем в «Опции генерации» для material
+        # Images checkbox — created here, added to "Generation options" for material
         self._images_checkbox = QCheckBox("Add images to cards")
 
         settings_group.setLayout(settings_form)
         layout.addWidget(settings_group)
 
-        # === Секция 2.5: Опции генерации ===
+        # === Section 2.5: Generation options ===
         self._lang_options_checkboxes: dict[str, QCheckBox] = {}
         self._image_size_combo: QComboBox | None = None
         self._image_size_label: QWidget | None = None
@@ -1055,14 +1055,14 @@ class InputDialog:
                 else:
                     opts_form.addRow(cb)
 
-            # Голос диктора
+            # Narrator voice
             self._voice_combo = self._create_voice_combo()
             opts_form.addRow(
                 _add_help_icon(QLabel("Voice:"), "Text-to-speech voice used for audio generation"),
                 self._voice_combo,
             )
 
-            # Размер изображения
+            # Image size
             self._image_size_combo = self._create_image_size_combo()
             opts_form.addRow(
                 _add_help_icon(
@@ -1106,7 +1106,7 @@ class InputDialog:
                 self._answer_detail_combo,
             )
 
-            # Чекбокс картинок
+            # Images checkbox
             opts_form.addRow(self._images_checkbox)
 
             self._image_size_combo = self._create_image_size_combo()
@@ -1118,7 +1118,7 @@ class InputDialog:
             self._image_size_label.setVisible(False)
             opts_form.addRow(self._image_size_label, self._image_size_combo)
 
-            # Показывать image_size + label когда включены картинки
+            # Show image_size + label when images are enabled
             def _toggle_image_size(state: int) -> None:
                 visible = bool(state)
                 if self._image_size_combo is not None:
@@ -1167,7 +1167,7 @@ class InputDialog:
             opts_group.setLayout(opts_form)
             layout.addWidget(opts_group)
 
-        # === Секция 3: Custom prompt (только для language) ===
+        # === Section 3: Custom prompt ===
         if _should_show_custom_prompt(mode):
             prompt_group = QGroupBox("Custom prompt")
             prompt_group.setCheckable(True)
@@ -1196,24 +1196,24 @@ class InputDialog:
             self._custom_prompt_toggle = None
             self._custom_prompt_input = None
 
-        # --- Единственная строка статуса/стоимости ---
+        # --- Single status/cost line ---
         self._cost_label = QLabel("")
         self._cost_label.setStyleSheet("color: palette(text);")
         layout.addWidget(self._cost_label)
 
-        # Обновляем оценку при изменении текста
+        # Update estimate when text changes
         self._input_text.textChanged.connect(self._update_cost_estimate)
 
-        # --- Прогресс-виджет (бар + Cancel) ---
+        # --- Progress widget (bar + Cancel) ---
         self._progress_widget = ProgressWidget(self._dialog)
         layout.addWidget(self._progress_widget.widget)
 
         layout.addStretch()
 
-        # Scroll area с содержимым
+        # Scroll area with content
         dialog_layout.addWidget(wrap_in_scroll_area(content))
 
-        # --- Кнопки нижней панели (вне scroll, всегда видны) ---
+        # --- Bottom panel buttons (outside scroll, always visible) ---
         buttons_layout = QHBoxLayout()
         buttons_layout.setContentsMargins(14, 6, 14, 14)
 
@@ -1237,14 +1237,14 @@ class InputDialog:
 
         dialog_layout.addLayout(buttons_layout)
 
-        # Масштабируем под экран
+        # Scale to screen size
         w, h = get_dialog_size(width_pct=0.4, height_pct=0.65, min_w=520, min_h=450)
         self._dialog.resize(w, h)
 
         self._go_back = False
 
     def _get_material_options(self) -> MaterialOptions | None:
-        """Собирает MaterialOptions из UI (только для material режима).
+        """Build MaterialOptions from UI (only for material mode).
 
         Returns:
             MaterialOptions или None если не material режим.
@@ -1274,7 +1274,7 @@ class InputDialog:
         )
 
     def _create_voice_combo(self) -> QComboBox:
-        """Создаёт комбобокс выбора голоса диктора."""
+        """Create narrator voice combobox."""
         from aqt.qt import QComboBox
 
         combo = QComboBox()
@@ -1292,7 +1292,7 @@ class InputDialog:
         return combo
 
     def _create_image_size_combo(self) -> QComboBox:
-        """Создаёт комбобокс выбора размера изображения."""
+        """Create image size combobox."""
         from aqt.qt import QComboBox
 
         combo = QComboBox()
@@ -1305,7 +1305,7 @@ class InputDialog:
         return combo
 
     def _get_deck_name(self) -> tuple[str, bool]:
-        """Возвращает имя колоды и флаг создания новой.
+        """Return deck name and new creation flag.
 
         Если введённое имя совпадает с существующей колодой — использует её.
         Если нет — помечает как новую для создания.
@@ -1316,7 +1316,7 @@ class InputDialog:
         return _get_deck_name_from_combo(self._deck_combo.currentText(), self._existing_decks)
 
     def _get_language_options(self) -> LanguageOptions | None:
-        """Собирает LanguageOptions из чекбоксов (только для language режима).
+        """Build LanguageOptions from checkboxes (only for language mode).
 
         Returns:
             LanguageOptions или None если не language режим.
@@ -1345,13 +1345,13 @@ class InputDialog:
         )
 
     def _get_max_cards_per_paragraph(self) -> int:
-        """Возвращает текущее значение max_cards_per_paragraph из спинбокса."""
+        """Return current max_cards_per_paragraph value from spinbox."""
         if self._max_cards_spin is not None:
             return int(self._max_cards_spin.value())
         return 3
 
     def _update_cost_estimate(self) -> None:
-        """Обновляет оценку стоимости из кэшированного pricing в конфиге."""
+        """Update cost estimate from cached pricing in config."""
         self._cost_label.setStyleSheet("color: palette(text);")
         text = self._input_text.toPlainText()
         card_count = _count_input_items(text, self._mode, max_cards_per_paragraph=self._get_max_cards_per_paragraph())
@@ -1370,14 +1370,14 @@ class InputDialog:
         self._cost_label.setText(f"Estimate: {cost_text} ({card_count} cards)")
 
     def _on_back(self) -> None:
-        """Обработчик кнопки Назад — возврат к выбору режима."""
+        """Back button handler — return to mode selection."""
         self._go_back = True
         self._dialog.reject()
 
-    # --- Три состояния кнопок: idle / generating / done ---
+    # --- Three button states: idle / generating / done ---
 
     def _reconnect_generate_btn(self, slot: Callable[[], None]) -> None:
-        """Отключает все слоты от clicked и подключает новый."""
+        """Disconnect all clicked slots and connect a new one."""
         import contextlib
 
         with contextlib.suppress(TypeError, RuntimeError):
@@ -1385,7 +1385,7 @@ class InputDialog:
         self._generate_btn.clicked.connect(slot)
 
     def _set_buttons_idle(self) -> None:
-        """Состояние idle: до генерации или после сброса."""
+        """Idle state: before generation or after reset."""
         self._back_btn.setEnabled(True)
         self._again_btn.setVisible(False)
         self._generate_btn.setText("Generate")
@@ -1395,7 +1395,7 @@ class InputDialog:
         self._reconnect_generate_btn(self._on_generate)
 
     def _set_buttons_generating(self) -> None:
-        """Состояние generating: идёт генерация."""
+        """Generating state: generation in progress."""
         self._back_btn.setEnabled(False)
         self._again_btn.setVisible(False)
         self._generate_btn.setText("Cancel")
@@ -1403,7 +1403,7 @@ class InputDialog:
         self._reconnect_generate_btn(self._on_cancel)
 
     def _set_buttons_done(self) -> None:
-        """Состояние done: генерация завершена."""
+        """Done state: generation complete."""
         self._back_btn.setEnabled(True)
         self._again_btn.setVisible(True)
         self._generate_btn.setText("Close")
@@ -1411,14 +1411,14 @@ class InputDialog:
         self._reconnect_generate_btn(self._dialog.accept)
 
     def _on_generate_again(self) -> None:
-        """Сбрасывает UI для повторной генерации."""
+        """Reset UI for new generation."""
         self._progress_widget.hide()
         self._cost_label.setText("")
         self._set_buttons_idle()
         self._update_cost_estimate()
 
     def _on_generate(self) -> None:
-        """Обработчик кнопки Generate — валидация, оценка стоимости, асинхронная генерация."""
+        """Generate button handler — validation, cost estimation, async generation."""
         deck_name, create_new = self._get_deck_name()
         config = get_config()
 
@@ -1431,10 +1431,10 @@ class InputDialog:
         ):
             custom_prompt = self._custom_prompt_input.toPlainText()
 
-        # Собираем MaterialOptions
+        # Build MaterialOptions
         mat_opts = self._get_material_options()
 
-        # Собираем voice и image_size
+        # Build voice and image_size
         voice = self._voice_combo.currentData() or "alloy" if self._voice_combo is not None else "alloy"
         image_size = self._image_size_combo.currentData() or "auto" if self._image_size_combo is not None else "auto"
 
@@ -1461,19 +1461,19 @@ class InputDialog:
 
         client = OpenRouterClient(api_key=config.api_key)
 
-        # Подтягиваем актуальный pricing из OpenRouter (модель могла смениться)
+        # Fetch up-to-date pricing from OpenRouter (model may have changed)
         self._ensure_pricing(config, client)
 
-        # Подсчёт карточек
+        # Count cards
         card_count = _count_input_items(
             request.input_text, self._mode, max_cards_per_paragraph=self._get_max_cards_per_paragraph()
         )
 
-        # Переключаем кнопки и показываем прогресс
+        # Switch buttons and show progress
         self._set_buttons_generating()
         self._progress_widget.show(card_count)
 
-        # Создаём генератор
+        # Create generator
         generator = _create_generator(
             mode=self._mode,
             client=client,
@@ -1486,13 +1486,13 @@ class InputDialog:
             voice=voice,
         )
 
-        # Ensure note types exist (до запуска потока — работает с Anki API из главного потока)
+        # Ensure note types exist (before thread start — works with Anki API from main thread)
         self._ensure_note_types(self._mode)
 
-        # Сохраняем request для использования в callbacks
+        # Save request for use in callbacks
         self._current_request = request
 
-        # Запускаем генерацию в фоновом потоке
+        # Start generation in background thread
         self._worker = GenerationWorker(generator, request)
         self._worker.connect_progress(self._on_progress_updated)
         self._worker.connect_finished(self._on_generation_finished)
@@ -1500,7 +1500,7 @@ class InputDialog:
         self._worker.start()
 
     def _on_progress_updated(self, progress: GenerationProgress) -> None:
-        """Обновляет UI по сигналу прогресса из рабочего потока."""
+        """Update UI on progress signal from worker thread."""
         self._last_progress = progress
         self._progress_widget.update_progress(progress)
         cost_text = _format_cost(progress.current_cost) if progress.current_cost > 0 else ""
@@ -1511,17 +1511,17 @@ class InputDialog:
         self._cost_label.setStyleSheet("color: palette(text);")
 
     def _on_generation_finished(self, cards: list[GeneratedCard]) -> None:
-        """Обработка успешного завершения генерации."""
+        """Handle successful generation completion."""
         request = self._current_request
 
         _save_cards_to_deck(cards, request.target_deck, create_new=request.create_new_deck)
 
-        # Вычисляем итоговую стоимость (из последнего прогресса)
+        # Calculate final cost (from last progress)
         total_cost = 0.0
         if hasattr(self, "_last_progress"):
             total_cost = self._last_progress.current_cost
 
-        # Логируем расходы
+        # Log costs
         _log_cost(self._mode, len(cards), total_cost)
 
         self._progress_widget.finish()
@@ -1530,14 +1530,14 @@ class InputDialog:
         self._set_buttons_done()
         self._worker = None
 
-        # Обновляем главное окно Anki чтобы показать новые карточки
+        # Refresh Anki main window to show new cards
         import contextlib
 
         with contextlib.suppress(Exception):
             self._mw.reset()
 
     def _on_generation_error(self, error_msg: str) -> None:
-        """Обработка ошибки генерации."""
+        """Handle generation error."""
         self._progress_widget.hide()
         self._cost_label.setText(f"Error: {error_msg}")
         self._cost_label.setStyleSheet("color: #f44336;")
@@ -1545,12 +1545,12 @@ class InputDialog:
         self._worker = None
 
     def _on_cancel(self) -> None:
-        """Отменяет текущую генерацию."""
+        """Cancel current generation."""
         if self._worker is not None:
             self._worker.cancel()
 
     def _ensure_pricing(self, config: AddonConfig, client: OpenRouterClient) -> None:
-        """Подтягивает pricing моделей — всегда обновляет все три из API."""
+        """Fetch model pricing — always updates all three from API."""
         import contextlib
 
         from ankiforge.config.dialog import _extract_pricing
@@ -1558,7 +1558,7 @@ class InputDialog:
 
         with contextlib.suppress(Exception):
             models = client.fetch_models()
-            # Всегда обновляем pricing — модель могла смениться
+            # Always update pricing — model may have changed
             if config.text_model:
                 config.text_model_pricing = _extract_pricing(config.text_model, models)
             if config.image_model:
@@ -1568,7 +1568,7 @@ class InputDialog:
             save_config(config)
 
     def _ensure_note_types(self, mode: GenerationMode) -> None:
-        """Создаёт нужные note types для выбранного режима."""
+        """Create required note types for the selected mode."""
         from ankiforge.anki_bridge.note_types import (
             ensure_language_note_type,
             ensure_qa_audio_note_type,
@@ -1589,7 +1589,7 @@ class InputDialog:
             ensure_qa_note_type()
 
     def run(self) -> bool:
-        """Показывает диалог модально.
+        """Show dialog modally.
 
         Returns:
             True если пользователь нажал Назад (для возврата к выбору режима).

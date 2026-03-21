@@ -1,4 +1,4 @@
-"""Генератор карточек с картинками — ввод вопросов/темы → QA + image → QA+Image карточки."""
+"""Image card generator — input questions/topics -> QA + image -> QA+Image cards."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ _IMAGE_PROMPT_TEMPLATE = (
 
 
 class ImageGenerator:
-    """Генератор QA+Image карточек из списка вопросов."""
+    """QA+Image card generator from a list of questions."""
 
     def __init__(
         self,
@@ -46,17 +46,17 @@ class ImageGenerator:
         request: CardRequest,
         progress_callback: Callable[[GenerationProgress], None],
     ) -> list[GeneratedCard]:
-        """Генерирует QA+Image карточки из списка вопросов.
+        """Generate QA+Image cards from a list of questions.
 
         Args:
-            request: Запрос с вопросами в input_text (по одному на строку).
-            progress_callback: Callback для отслеживания прогресса.
+            request: Request with questions in input_text (one per line).
+            progress_callback: Callback for tracking progress.
 
         Returns:
-            Список сгенерированных карточек.
+            List of generated cards.
 
         Raises:
-            ValueError: Если не найдено вопросов во входном тексте.
+            ValueError: If no questions found in input text.
         """
         questions = self._parse_questions(request.input_text)
         progress = GenerationProgress(total_cards=len(questions))
@@ -92,16 +92,16 @@ class ImageGenerator:
         return cards
 
     def _parse_questions(self, text: str) -> list[str]:
-        """Парсит вопросы из текста (по одному на строку).
+        """Parse questions from text (one per line).
 
         Args:
-            text: Текст с вопросами.
+            text: Text with questions.
 
         Returns:
-            Список вопросов.
+            List of questions.
 
         Raises:
-            ValueError: Если не найдено вопросов.
+            ValueError: If no questions found.
         """
         questions = [line.strip() for line in text.splitlines() if line.strip()]
         if not questions:

@@ -1,10 +1,10 @@
-"""Кастомные исключения для OpenRouter API."""
+"""Custom exceptions for the OpenRouter API."""
 
 from __future__ import annotations
 
 
 class OpenRouterError(Exception):
-    """Базовое исключение OpenRouter."""
+    """Base OpenRouter exception."""
 
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
@@ -12,11 +12,11 @@ class OpenRouterError(Exception):
 
 
 class OpenRouterAuthError(OpenRouterError):
-    """Невалидный API-ключ (401)."""
+    """Invalid API key (401)."""
 
 
 class OpenRouterRateLimitError(OpenRouterError):
-    """Превышен rate limit (429)."""
+    """Rate limit exceeded (429)."""
 
     def __init__(self, message: str, retry_after: float | None = None) -> None:
         super().__init__(message, status_code=429)
@@ -24,8 +24,8 @@ class OpenRouterRateLimitError(OpenRouterError):
 
 
 class OpenRouterInsufficientCreditsError(OpenRouterError):
-    """Недостаточно кредитов на аккаунте (402)."""
+    """Insufficient account credits (402)."""
 
 
 class OpenRouterTimeoutError(OpenRouterError):
-    """Таймаут запроса."""
+    """Request timeout."""

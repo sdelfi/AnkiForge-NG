@@ -1,4 +1,4 @@
-"""OpenRouter API клиент — текстовая, image и audio генерация, список моделей и стоимость."""
+"""OpenRouter API client — text, image and audio generation, models list and cost estimation."""
 
 from __future__ import annotations
 
@@ -23,17 +23,17 @@ _DEFAULT_BASE_DELAY = 1.0
 _DEFAULT_MODELS_CACHE_TTL = 300.0
 _RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
 
-# Примерные оценки токенов на карточку для расчёта стоимости
+# Approximate token estimates per card for cost calculation
 _AVG_PROMPT_TOKENS = 200
 _AVG_COMPLETION_TOKENS = 150
 _AVG_AUDIO_CHARS = 100
 
 
 def _parse_modalities(modality_str: str) -> list[Modality]:
-    """Парсит строку модальности OpenRouter в список Modality."""
+    """Parse an OpenRouter modality string into a list of Modality values."""
     modalities: list[Modality] = []
     lower = modality_str.lower()
-    # Формат: "input->output", например "text->text", "text->image", "text+image->text"
+    # Format: "input->output", e.g. "text->text", "text->image", "text+image->text"
     parts = lower.split("->")
     output = parts[-1] if len(parts) > 1 else ""
     if "text" in output:
@@ -46,7 +46,7 @@ def _parse_modalities(modality_str: str) -> list[Modality]:
 
 
 class OpenRouterClient:
-    """HTTP-клиент для OpenRouter API."""
+    """HTTP client for the OpenRouter API."""
 
     def __init__(
         self,
@@ -66,7 +66,7 @@ class OpenRouterClient:
         self._models_cache: list[Model] | None = None
         self._models_cache_time: float = 0.0
         self._last_usage: tuple[int, int] = (0, 0)  # (prompt_tokens, completion_tokens)
-        self._last_cost: float = 0.0  # стоимость последнего вызова из usage.cost
+        self._last_cost: float = 0.0  # cost of the last call from usage.cost
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -75,21 +75,21 @@ class OpenRouterClient:
         }
 
     def generate_text(self, prompt: str, model: str, *, temperature: float | None = None) -> str:
-        """Генерация текста через OpenRouter Chat Completions API.
+        """Generate text via the OpenRouter Chat Completions API.
 
         Args:
-            prompt: Текст промпта.
-            model: ID модели (например, 'openai/gpt-4o').
-            temperature: Температура генерации (0.0–2.0). None — дефолт модели.
+            prompt: The prompt text.
+            model: Model ID (e.g. 'openai/gpt-4o').
+            temperature: Generation temperature (0.0–2.0). None uses the model default.
 
         Returns:
-            Сгенерированный текст.
+            Generated text.
 
         Raises:
-            OpenRouterAuthError: Невалидный API-ключ (401).
-            OpenRouterRateLimitError: Превышен rate limit (429).
-            OpenRouterTimeoutError: Таймаут запроса.
-            OpenRouterError: Прочие ошибки API.
+            OpenRouterAuthError: Invalid API key (401).
+            OpenRouterRateLimitError: Rate limit exceeded (429).
+            OpenRouterTimeoutError: Request timeout.
+            OpenRouterError: Other API errors.
         """
         body: dict[str, object] = {
             "model": model,
@@ -101,7 +101,7 @@ class OpenRouterClient:
         return self._parse_text_response(response)
 
     def _request_with_retry(self, body: dict[str, object], *, timeout: int | None = None) -> requests.Response:
-        """Выполняет HTTP-запрос с retry при transient-ошибках."""
+        """Perform an HTTP request with retries on transient errors."""
         effective_timeout = timeout or self.timeout
         last_exception: Exception | None = None
 
@@ -144,7 +144,7 @@ class OpenRouterClient:
         raise last_exception or OpenRouterError(msg)
 
     def _check_status(self, resp: requests.Response) -> None:
-        """Проверяет HTTP-статус и бросает типизированные исключения."""
+        """Check HTTP status and raise typed exceptions."""
         if resp.status_code == 200:
             return
 
@@ -170,13 +170,13 @@ class OpenRouterClient:
                 status_code=resp.status_code,
             )
 
-        # Пытаемся достать тело ошибки для диагностики
+        # Try to extract error body for diagnostics
         try:
             error_body = resp.json()
             error_obj = error_body.get("error", {})
             if isinstance(error_obj, dict):
                 error_msg = error_obj.get("message", "")
-                # OpenRouter часто прячет детали в metadata
+                # OpenRouter often hides details in metadata
                 metadata = error_obj.get("metadata", {})
                 if isinstance(metadata, dict) and metadata.get("raw"):
                     error_msg = f"{error_msg} | {str(metadata['raw'])[:300]}"
@@ -193,23 +193,23 @@ class OpenRouterClient:
         )
 
     def generate_image(self, prompt: str, model: str, *, size: str | None = None) -> bytes:
-        """Генерация изображения через OpenRouter API.
+        """Generate an image via the OpenRouter API.
 
         Args:
-            prompt: Описание изображения.
-            model: ID модели (например, 'google/gemini-3.1-flash-image-preview').
-            size: Размер изображения ('0.5K', '1K', '2K', '4K'). None или 'auto' — размер по умолчанию модели.
+            prompt: Image description.
+            model: Model ID (e.g. 'google/gemini-3.1-flash-image-preview').
+            size: Image size ('0.5K', '1K', '2K', '4K'). None or 'auto' uses the model default.
 
         Returns:
-            Байты изображения (PNG).
+            Image bytes (PNG).
 
         Raises:
-            OpenRouterAuthError: Невалидный API-ключ (401).
-            OpenRouterRateLimitError: Превышен rate limit (429).
-            OpenRouterTimeoutError: Таймаут запроса.
-            OpenRouterError: Прочие ошибки API.
+            OpenRouterAuthError: Invalid API key (401).
+            OpenRouterRateLimitError: Rate limit exceeded (429).
+            OpenRouterTimeoutError: Request timeout.
+            OpenRouterError: Other API errors.
         """
-        # Multimodal content format — как в официальных примерах OpenRouter
+        # Multimodal content format — as in official OpenRouter examples
         body: dict[str, object] = {
             "model": model,
             "messages": [
@@ -230,30 +230,30 @@ class OpenRouterClient:
         except OpenRouterError:
             if "image_config" not in body:
                 raise
-            # Retry без image_config — некоторые модели/провайдеры не поддерживают его
+            # Retry without image_config — some models/providers don't support it
             body.pop("image_config")
             response = self._request_with_retry(body, timeout=60)
             return self._parse_image_response(response)
 
     def generate_audio(self, text: str, model: str, *, voice: str = "alloy") -> bytes:
-        """Генерация аудио (TTS) через OpenRouter API.
+        """Generate audio (TTS) via the OpenRouter API.
 
-        Использует streaming с modalities=["text","audio"] для моделей
-        типа gpt-audio-mini. Собирает base64-чанки из delta.audio.data.
+        Uses streaming with modalities=["text","audio"] for models
+        like gpt-audio-mini. Collects base64 chunks from delta.audio.data.
 
         Args:
-            text: Текст для озвучивания.
-            model: ID модели (например, 'openai/gpt-audio-mini').
-            voice: Голос диктора (alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse).
+            text: Text to synthesize.
+            model: Model ID (e.g. 'openai/gpt-audio-mini').
+            voice: Speaker voice (alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse).
 
         Returns:
-            Байты аудио (wav).
+            Audio bytes (wav).
 
         Raises:
-            OpenRouterAuthError: Невалидный API-ключ (401).
-            OpenRouterRateLimitError: Превышен rate limit (429).
-            OpenRouterTimeoutError: Таймаут запроса.
-            OpenRouterError: Прочие ошибки API.
+            OpenRouterAuthError: Invalid API key (401).
+            OpenRouterRateLimitError: Rate limit exceeded (429).
+            OpenRouterTimeoutError: Request timeout.
+            OpenRouterError: Other API errors.
         """
         body: dict[str, object] = {
             "model": model,
@@ -271,7 +271,7 @@ class OpenRouterClient:
         return self._stream_audio(body)
 
     def _stream_audio(self, body: dict[str, object]) -> bytes:
-        """Выполняет streaming-запрос и собирает аудио-чанки."""
+        """Perform a streaming request and collect audio chunks."""
         import json as _json
 
         try:
@@ -308,7 +308,7 @@ class OpenRouterClient:
             if isinstance(audio_data, dict) and audio_data.get("data"):
                 audio_chunks.append(audio_data["data"])
 
-        # Usage часто приходит в последнем чанке
+        # Usage often arrives in the last chunk
         if last_chunk_data:
             self._extract_usage(last_chunk_data)
 
@@ -325,7 +325,7 @@ class OpenRouterClient:
 
     @staticmethod
     def _pcm16_to_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1) -> bytes:
-        """Конвертирует raw PCM16 данные в WAV формат."""
+        """Convert raw PCM16 data to WAV format."""
         import struct
 
         bits_per_sample = 16
@@ -353,23 +353,23 @@ class OpenRouterClient:
 
     @property
     def last_usage(self) -> tuple[int, int]:
-        """Возвращает (prompt_tokens, completion_tokens) последнего вызова."""
+        """Return (prompt_tokens, completion_tokens) of the last call."""
         return self._last_usage
 
     @property
     def last_cost(self) -> float:
-        """Возвращает стоимость последнего вызова (из usage.cost OpenRouter)."""
+        """Return the cost of the last call (from OpenRouter usage.cost)."""
         return self._last_cost
 
     def _extract_usage(self, data: dict[str, object]) -> None:
-        """Извлекает usage и cost из ответа API."""
+        """Extract usage and cost from the API response."""
         usage = data.get("usage", {})
         if isinstance(usage, dict):
             self._last_usage = (
                 int(usage.get("prompt_tokens", 0)),
                 int(usage.get("completion_tokens", 0)),
             )
-            # OpenRouter возвращает реальную стоимость в usage.cost
+            # OpenRouter returns the actual cost in usage.cost
             cost_raw = usage.get("cost")
             self._last_cost = float(cost_raw) if cost_raw is not None else 0.0
         else:
@@ -377,7 +377,7 @@ class OpenRouterClient:
             self._last_cost = 0.0
 
     def _parse_text_response(self, resp: requests.Response) -> str:
-        """Извлекает текст из JSON-ответа OpenRouter."""
+        """Extract text from the OpenRouter JSON response."""
         try:
             data = resp.json()
         except (ValueError, TypeError) as e:
@@ -396,11 +396,11 @@ class OpenRouterClient:
         return content
 
     def _parse_image_response(self, resp: requests.Response) -> bytes:
-        """Извлекает изображение из JSON-ответа OpenRouter.
+        """Extract image from the OpenRouter JSON response.
 
-        Поддерживает два формата:
-        1. images[] — стандартный формат OpenRouter
-        2. content[] с type=image_url — multimodal формат (некоторые провайдеры)
+        Supports two formats:
+        1. images[] — standard OpenRouter format
+        2. content[] with type=image_url — multimodal format (some providers)
         """
         try:
             data = resp.json()
@@ -415,13 +415,13 @@ class OpenRouterClient:
 
         message = choices[0].get("message", {})
 
-        # Формат 1: images[] (стандартный OpenRouter)
+        # Format 1: images[] (standard OpenRouter)
         images = message.get("images", [])
         if images:
             url: str = images[0].get("image_url", {}).get("url", "")
             return self._decode_base64_image(url)
 
-        # Формат 2: content[] с type=image_url (multimodal)
+        # Format 2: content[] with type=image_url (multimodal)
         content = message.get("content")
         if isinstance(content, list):
             for part in content:
@@ -433,7 +433,7 @@ class OpenRouterClient:
 
     @staticmethod
     def _decode_base64_image(url: str) -> bytes:
-        """Декодирует base64 data URL в байты изображения."""
+        """Decode a base64 data URL into image bytes."""
         prefix = "base64,"
         idx = url.find(prefix)
         if idx == -1:
@@ -446,7 +446,7 @@ class OpenRouterClient:
             raise OpenRouterError("Failed to decode base64 image") from e
 
     def _parse_audio_response(self, resp: requests.Response) -> bytes:
-        """Извлекает аудио из JSON-ответа OpenRouter."""
+        """Extract audio from the OpenRouter JSON response."""
         try:
             data = resp.json()
         except (ValueError, TypeError) as e:
@@ -468,13 +468,13 @@ class OpenRouterClient:
             raise OpenRouterError("Failed to decode base64 audio") from e
 
     def fetch_balance(self) -> dict[str, float]:
-        """Запрашивает баланс аккаунта через OpenRouter API.
+        """Fetch account balance via the OpenRouter API.
 
         Returns:
-            Словарь с ключами: 'limit', 'usage', 'remaining' (в долларах).
+            Dict with keys: 'limit', 'usage', 'remaining' (in dollars).
 
         Raises:
-            OpenRouterError: При ошибке API.
+            OpenRouterError: On API error.
         """
         resp = requests.get(
             f"{self.base_url}/auth/key",
@@ -493,14 +493,14 @@ class OpenRouterClient:
 
         usage = float(usage_raw) if usage_raw is not None else 0.0
 
-        # limit_remaining — реальный остаток кредитов (для prepaid/unlimited ключей)
+        # limit_remaining — actual remaining credits (for prepaid/unlimited keys)
         if limit_remaining_raw is not None:
             remaining = float(limit_remaining_raw)
         elif limit_raw is not None:
             remaining = float(limit_raw) - usage
         else:
-            # unlimited без limit_remaining — не можем определить остаток
-            remaining = -1.0  # sentinel: "неизвестно"
+            # unlimited without limit_remaining — cannot determine the remaining balance
+            remaining = -1.0  # sentinel: "unknown"
 
         is_unlimited = limit_raw is None
 
@@ -511,11 +511,11 @@ class OpenRouterClient:
         }
 
     def fetch_models(self) -> list[Model]:
-        """Загружает список моделей с OpenRouter API.
+        """Fetch the list of models from the OpenRouter API.
 
         Returns:
-            Типизированный список моделей с pricing и модальностями.
-            Результат кешируется с TTL.
+            Typed list of models with pricing and modalities.
+            Results are cached with TTL.
         """
         now = time.time()
         if self._models_cache is not None and (now - self._models_cache_time) < self._models_cache_ttl:
@@ -543,7 +543,7 @@ class OpenRouterClient:
 
     @staticmethod
     def _parse_model_item(item: dict[str, object]) -> Model:
-        """Парсит один элемент из ответа /models."""
+        """Parse a single item from the /models response."""
 
         pricing_raw = item.get("pricing", {})
         assert isinstance(pricing_raw, dict)
@@ -580,35 +580,35 @@ class OpenRouterClient:
         image_model: Model | None = None,
         audio_model: Model | None = None,
     ) -> float:
-        """Расчёт примерной стоимости генерации.
+        """Estimate the approximate generation cost.
 
         Args:
-            mode: Режим генерации (questions, language, material, image, audio).
-            card_count: Количество карточек.
-            text_model: Модель для текста.
-            image_model: Модель для изображений.
-            audio_model: Модель для аудио.
+            mode: Generation mode (questions, language, material, image, audio).
+            card_count: Number of cards.
+            text_model: Model for text.
+            image_model: Model for images.
+            audio_model: Model for audio.
 
         Returns:
-            Примерная стоимость в долларах.
+            Approximate cost in dollars.
         """
         if card_count <= 0:
             return 0.0
 
         cost = 0.0
 
-        # Стоимость текстовой генерации
+        # Text generation cost
         if text_model is not None and mode in ("questions", "language", "material", "image", "audio"):
             text_cost_per_card = (
                 text_model.pricing.prompt * _AVG_PROMPT_TOKENS + text_model.pricing.completion * _AVG_COMPLETION_TOKENS
             )
             cost += text_cost_per_card * card_count
 
-        # Стоимость генерации изображений (~$0.04 за картинку по умолчанию)
+        # Image generation cost (~$0.04 per image by default)
         if image_model is not None and mode in ("language", "image"):
             cost += 0.04 * card_count
 
-        # Стоимость генерации аудио
+        # Audio generation cost
         if audio_model is not None and mode in ("language", "audio"):
             audio_cost_per_card = audio_model.pricing.prompt * _AVG_AUDIO_CHARS
             cost += audio_cost_per_card * card_count
@@ -616,6 +616,6 @@ class OpenRouterClient:
         return cost
 
     def _sleep_backoff(self, attempt: int) -> None:
-        """Экспоненциальная задержка между retry."""
+        """Exponential backoff delay between retries."""
         delay = self.base_delay * (2**attempt)
         time.sleep(delay)

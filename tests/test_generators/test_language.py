@@ -1,4 +1,4 @@
-"""Тесты для LanguageGenerator."""
+"""Tests for LanguageGenerator."""
 
 from __future__ import annotations
 
@@ -20,13 +20,13 @@ _MOCK_JSON_RESPONSE = json.dumps(
     {
         "definition": "An apple is a round fruit that grows on trees.",
         "example": "She picked a ripe apple from the tree and bit into it.",
-        "ipa": "/ˈæpəl/",
+        "ipa": "/\u02c8\u00e6p\u0259l/",
     }
 )
 
 
 def _make_fake_wav(pcm_size: int = 100) -> bytes:
-    """Создаёт минимальный валидный WAV для тестов."""
+    """Creates a minimal valid WAV for tests."""
     import struct
 
     pcm = b"\x01\x00" * pcm_size
@@ -51,7 +51,7 @@ def _make_fake_wav(pcm_size: int = 100) -> bytes:
 
 @pytest.fixture
 def mock_client() -> MagicMock:
-    """Мок OpenRouterClient."""
+    """Mock OpenRouterClient."""
     client = MagicMock(spec=OpenRouterClient)
     client.generate_text.return_value = _MOCK_JSON_RESPONSE
     client.generate_audio.return_value = _make_fake_wav(100)
@@ -82,7 +82,7 @@ def base_request() -> CardRequest:
 
 
 # ---------------------------------------------------------------------------
-# Парсинг слов
+# Word parsing
 # ---------------------------------------------------------------------------
 
 
@@ -121,7 +121,7 @@ class TestParseWords:
 
 
 # ---------------------------------------------------------------------------
-# Парсинг JSON ответа
+# JSON response parsing
 # ---------------------------------------------------------------------------
 
 
@@ -131,13 +131,13 @@ class TestParseJsonResponse:
             {
                 "definition": "A round fruit",
                 "example": "I eat an apple every day.",
-                "ipa": "/ˈæpəl/",
+                "ipa": "/\u02c8\u00e6p\u0259l/",
             }
         )
         definition, example, ipa = generator._parse_json_response(response)
         assert definition == "A round fruit"
         assert example == "I eat an apple every day."
-        assert ipa == "/ˈæpəl/"
+        assert ipa == "/\u02c8\u00e6p\u0259l/"
 
     def test_parses_json_with_markdown_fences(self, generator: LanguageGenerator) -> None:
         response = '```json\n{"definition": "A fruit", "example": "Eat it.", "ipa": "/x/"}\n```'
@@ -167,7 +167,7 @@ class TestParseJsonResponse:
 
 
 # ---------------------------------------------------------------------------
-# Генерация карточек — один JSON-запрос на текст
+# Card generation — one JSON request per text
 # ---------------------------------------------------------------------------
 
 
@@ -180,7 +180,7 @@ class TestGenerate:
     def test_card_fields_all_options(
         self, generator: LanguageGenerator, mock_client: MagicMock, base_request: CardRequest
     ) -> None:
-        """Дефолт — все опции: audio_data, audio_definition, audio_example, image_data, transcription."""
+        """Default — all options: audio_data, audio_definition, audio_example, image_data, transcription."""
         cards = generator.generate(base_request, MagicMock())
         card = cards[0]
         assert card.word == "apple"
@@ -189,18 +189,18 @@ class TestGenerate:
         assert card.audio_data is not None
         assert len(card.audio_data) > 44  # valid WAV
         assert card.audio_example is not None
-        # Тишина — отдельный файл (генерируется когда есть и def, и example audio)
+        # Silence — separate file (generated when both def and example audio exist)
         assert card.audio_silence is not None
         assert len(card.audio_silence) > 44
         assert card.image_data == b"fake-image-bytes"
-        assert card.transcription == "/ˈæpəl/"
+        assert card.transcription == "/\u02c8\u00e6p\u0259l/"
         assert card.note_type == LANGUAGE_NOTE_TYPE_NAME
-        # Слово выделено жирным в definition и example
+        # Word is bolded in definition and example
         assert "<b>" in (card.definition or "")
         assert "<b>" in (card.example or "")
 
     def test_single_text_call_per_word(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
-        """Один text-запрос на слово (definition + example + IPA в JSON)."""
+        """One text request per word (definition + example + IPA in JSON)."""
         request = CardRequest(
             mode=GenerationMode.LANGUAGE,
             input_text="apple",
@@ -211,7 +211,7 @@ class TestGenerate:
         assert mock_client.generate_text.call_count == 1
 
     def test_three_audio_calls_per_word(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
-        """3 audio вызова: word, definition, example."""
+        """3 audio calls: word, definition, example."""
         request = CardRequest(
             mode=GenerationMode.LANGUAGE,
             input_text="apple",
@@ -236,8 +236,8 @@ class TestGenerate:
             generator.generate(request, MagicMock())
 
     def test_cost_from_api_cost(self, mock_client: MagicMock) -> None:
-        """Стоимость берётся из usage.cost если OpenRouter её вернул."""
-        mock_client.last_cost = 0.05  # API вернул стоимость
+        """Cost is taken from usage.cost if OpenRouter returned it."""
+        mock_client.last_cost = 0.05  # API returned cost
         gen = LanguageGenerator(
             client=mock_client,
             text_model="openai/gpt-4o",
@@ -256,11 +256,11 @@ class TestGenerate:
             costs.append(progress.current_cost)
 
         gen.generate(request, capture)
-        # 5 вызовов API (text + 3 audio + image), каждый $0.05
+        # 5 API calls (text + 3 audio + image), each $0.05
         assert costs[-1] == pytest.approx(0.25, abs=0.01)
 
     def test_cost_fallback_to_pricing(self, mock_client: MagicMock) -> None:
-        """Если usage.cost == 0, считаем из токенов × pricing."""
+        """If usage.cost == 0, calculate from tokens x pricing."""
         from ankiforge.models import ModelPricingCache
 
         mock_client.last_cost = 0.0
@@ -287,12 +287,12 @@ class TestGenerate:
             costs.append(progress.current_cost)
 
         gen.generate(request, capture)
-        # Каждый вызов: 100*0.001 + 50*0.002 = 0.2; 5 вызовов = 1.0
+        # Each call: 100*0.001 + 50*0.002 = 0.2; 5 calls = 1.0
         assert costs[-1] == pytest.approx(1.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------
-# LanguageOptions — условная генерация
+# LanguageOptions — conditional generation
 # ---------------------------------------------------------------------------
 
 
@@ -331,7 +331,7 @@ class TestLanguageOptions:
         )
         cards = generator.generate(request, MagicMock())
         assert cards[0].transcription is None
-        # Всё ещё 1 text-запрос (JSON включает definition + example)
+        # Still 1 text request (JSON includes definition + example)
         assert mock_client.generate_text.call_count == 1
 
     def test_all_disabled(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
@@ -380,7 +380,7 @@ class TestLanguageOptions:
             ),
         )
         generator.generate(request, MagicMock())
-        # generate_audio вызван 1 раз (только word) с voice="nova"
+        # generate_audio called 1 time (word only) with voice="nova"
         assert mock_client.generate_audio.call_count == 1
         _, kwargs = mock_client.generate_audio.call_args
         assert kwargs["voice"] == "nova"
@@ -416,7 +416,7 @@ class TestLanguageOptions:
     def test_generate_text_called_with_temperature_03(
         self, generator: LanguageGenerator, mock_client: MagicMock
     ) -> None:
-        """generate_text вызывается с temperature=0.3."""
+        """generate_text is called with temperature=0.3."""
         request = CardRequest(
             mode=GenerationMode.LANGUAGE,
             input_text="apple",
@@ -447,7 +447,7 @@ class TestLanguageOptions:
 
 
 # ---------------------------------------------------------------------------
-# Отмена генерации
+# Generation cancellation
 # ---------------------------------------------------------------------------
 
 
@@ -474,7 +474,7 @@ class TestCancellation:
 
 
 # ---------------------------------------------------------------------------
-# Промпт
+# Prompt
 # ---------------------------------------------------------------------------
 
 
@@ -492,14 +492,14 @@ class TestPrompt:
         assert "json" in prompt.lower() or "JSON" in prompt
 
     def test_prompt_requires_word_in_definition(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
-        """Промпт должен требовать использование слова в определении."""
+        """Prompt must require using the word in the definition."""
         request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
         generator.generate(request, MagicMock())
         prompt = mock_client.generate_text.call_args[0][0]
         assert "starts with the word" in prompt.lower() or "STARTS with the word" in prompt
 
     def test_prompt_requires_word_in_example(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
-        """Промпт должен требовать использование слова в примере."""
+        """Prompt must require using the word in the example."""
         request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
         generator.generate(request, MagicMock())
         prompt = mock_client.generate_text.call_args[0][0]
@@ -534,7 +534,7 @@ class TestGenerateSilenceWav:
         from ankiforge.generators.language import _generate_silence_wav
 
         result = _generate_silence_wav(seconds=1.0)
-        # 44 header + 24000 samples × 2 bytes = 48044
+        # 44 header + 24000 samples x 2 bytes = 48044
         assert len(result) == 44 + 24000 * 2
         assert result[:4] == b"RIFF"
 
@@ -551,7 +551,7 @@ class TestGenerateSilenceWav:
         from ankiforge.generators.language import _generate_silence_wav
 
         result = _generate_silence_wav()
-        expected_pcm = 24000 * 2 * 2  # 2 sec × 24000 Hz × 2 bytes
+        expected_pcm = 24000 * 2 * 2  # 2 sec x 24000 Hz x 2 bytes
         assert len(result) == 44 + expected_pcm
 
 

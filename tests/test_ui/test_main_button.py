@@ -1,4 +1,4 @@
-"""Тесты для ankiforge.ui.main_button — кнопка Generate Cards на главном экране."""
+"""Tests for ankiforge.ui.main_button — Generate Cards button on the main screen."""
 
 from __future__ import annotations
 
@@ -12,39 +12,39 @@ from ankiforge.ui.main_button import (
 )
 
 # ---------------------------------------------------------------------------
-# Тесты MODE_DESCRIPTIONS
+# Tests for MODE_DESCRIPTIONS
 # ---------------------------------------------------------------------------
 
 
 class TestModeDescriptions:
-    """Проверяет что описания режимов корректны."""
+    """Verify that mode descriptions are correct."""
 
     def test_all_five_modes_present(self) -> None:
-        """Все 5 режимов генерации имеют описания."""
+        """All 5 generation modes have descriptions."""
         from ankiforge.models import GenerationMode
 
         for mode in GenerationMode:
-            assert mode in MODE_DESCRIPTIONS, f"Нет описания для {mode}"
+            assert mode in MODE_DESCRIPTIONS, f"No description for {mode}"
 
     def test_descriptions_have_title_and_subtitle(self) -> None:
-        """Каждое описание содержит title и subtitle."""
+        """Each description contains title and subtitle."""
         for mode, desc in MODE_DESCRIPTIONS.items():
-            assert "title" in desc, f"Нет title для {mode}"
-            assert "subtitle" in desc, f"Нет subtitle для {mode}"
+            assert "title" in desc, f"No title for {mode}"
+            assert "subtitle" in desc, f"No subtitle for {mode}"
             assert len(desc["title"]) > 0
             assert len(desc["subtitle"]) > 0
 
 
 # ---------------------------------------------------------------------------
-# Тесты setup_main_button
+# Tests for setup_main_button
 # ---------------------------------------------------------------------------
 
 
 class TestSetupMainButton:
-    """Проверяет регистрацию кнопки в меню Tools."""
+    """Verify button registration in the Tools menu."""
 
     def test_setup_main_button_registers_menu_action(self) -> None:
-        """setup_main_button добавляет пункт в меню Tools."""
+        """setup_main_button adds an item to the Tools menu."""
         mw = MagicMock()
         action = MagicMock()
         mw.form.menuTools.addAction.return_value = action
@@ -57,15 +57,15 @@ class TestSetupMainButton:
 
 
 # ---------------------------------------------------------------------------
-# Тесты DeckBrowser кнопки
+# Tests for DeckBrowser button
 # ---------------------------------------------------------------------------
 
 
 class TestDeckBrowserButton:
-    """Проверяет функции для DeckBrowser."""
+    """Verify DeckBrowser functions."""
 
     def test_on_deck_browser_content_adds_link(self) -> None:
-        """_on_deck_browser_content добавляет кнопку AnkiForge в drawLinks DeckBrowser."""
+        """_on_deck_browser_content adds an AnkiForge button to DeckBrowser drawLinks."""
         deck_browser = MagicMock()
         deck_browser.drawLinks = [
             ["", "shared", "Get Shared"],
@@ -80,7 +80,7 @@ class TestDeckBrowserButton:
         assert link[2] == "Generate Cards"
 
     def test_on_deck_browser_content_no_duplicates(self) -> None:
-        """_on_deck_browser_content не дублирует кнопку при повторном вызове."""
+        """_on_deck_browser_content does not duplicate the button on repeated calls."""
         deck_browser = MagicMock()
         deck_browser.drawLinks = [["", "_ankiforgeGenerate", "Generate Cards"]]
 
@@ -90,7 +90,7 @@ class TestDeckBrowserButton:
 
     @patch("ankiforge.ui.main_button._on_generate_clicked")
     def test_js_message_handler_handles_ankiforge(self, mock_generate: MagicMock) -> None:
-        """_on_js_message обрабатывает _ankiforgeGenerate."""
+        """_on_js_message handles _ankiforgeGenerate."""
         mw = MagicMock()
         result = _on_js_message(mw, (False, None), "_ankiforgeGenerate", MagicMock())
 
@@ -98,7 +98,7 @@ class TestDeckBrowserButton:
         mock_generate.assert_called_once_with(mw)
 
     def test_js_message_handler_ignores_other(self) -> None:
-        """_on_js_message пропускает чужие сообщения."""
+        """_on_js_message ignores unrelated messages."""
         mw = MagicMock()
         handled = (False, None)
         result = _on_js_message(mw, handled, "other_message", MagicMock())
@@ -106,7 +106,7 @@ class TestDeckBrowserButton:
         assert result == handled
 
     def test_setup_deck_browser_button_registers_hooks(self) -> None:
-        """setup_deck_browser_button регистрирует хуки."""
+        """setup_deck_browser_button registers hooks."""
         mock_gui_hooks = MagicMock()
 
         with patch.dict("sys.modules", {"aqt": MagicMock(gui_hooks=mock_gui_hooks)}):

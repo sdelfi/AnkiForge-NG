@@ -1,4 +1,4 @@
-"""Тесты для MaterialGenerator."""
+"""Tests for MaterialGenerator."""
 
 from __future__ import annotations
 
@@ -36,9 +36,9 @@ _AI_RESPONSE_ONE_PAIR = "QUESTION: Что такое ДНК?\nANSWER: ДНК —
 
 @pytest.fixture
 def mock_client() -> MagicMock:
-    """Мок OpenRouterClient."""
+    """Mock OpenRouterClient."""
     client = MagicMock(spec=OpenRouterClient)
-    # По умолчанию: extract → факты, generate → QA пары
+    # Default: extract -> facts, generate -> QA pairs
     client.generate_text.side_effect = [_AI_EXTRACT_RESPONSE, _AI_GENERATE_RESPONSE]
     client.generate_image.return_value = b"fake-image-data"
     client.last_cost = 0.0
@@ -79,7 +79,7 @@ def request_with_images() -> CardRequest:
 
 
 # ---------------------------------------------------------------------------
-# Парсинг QA-пар из ответа AI
+# Parsing QA pairs from AI response
 # ---------------------------------------------------------------------------
 
 
@@ -130,7 +130,7 @@ class TestParseQAPairs:
 
 
 # ---------------------------------------------------------------------------
-# Подготовка абзацев
+# Paragraph preparation
 # ---------------------------------------------------------------------------
 
 
@@ -140,7 +140,7 @@ class TestPrepareParapgraphs:
         assert len(result) == 1
 
     def test_multiple_paragraphs_merged_when_small(self, generator: MaterialGenerator) -> None:
-        """Небольшие соседние абзацы мержатся в один чанк (до 3000 символов)."""
+        """Small adjacent paragraphs are merged into one chunk (up to 3000 chars)."""
         text = (
             "Абзац первый содержит достаточно информации для генерации карточки. "
             "Фотосинтез — процесс преобразования световой энергии в химическую энергию. "
@@ -152,18 +152,18 @@ class TestPrepareParapgraphs:
             "РНК выполняет функцию передачи генетической информации от ДНК к рибосомам."
         )
         result = generator._prepare_paragraphs(text)
-        # ~600 символов суммарно → всё мержится в 1 чанк
+        # ~600 chars total -> everything merges into 1 chunk
         assert len(result) == 1
 
     def test_large_text_splits_into_multiple_chunks(self, generator: MaterialGenerator) -> None:
-        """Текст >3000 символов разбивается на несколько чанков."""
-        para = "Абзац с достаточной длиной. " * 30  # ~800 символов
-        text = f"{para}\n\n{para}\n\n{para}\n\n{para}\n\n{para}"  # ~4000+ символов
+        """Text >3000 chars is split into multiple chunks."""
+        para = "Абзац с достаточной длиной. " * 30  # ~800 chars
+        text = f"{para}\n\n{para}\n\n{para}\n\n{para}\n\n{para}"  # ~4000+ chars
         result = generator._prepare_paragraphs(text)
         assert len(result) >= 2
 
     def test_topic_headings_split_into_sections(self, generator: MaterialGenerator) -> None:
-        """Заголовки-вопросы создают отдельные секции даже в коротком тексте."""
+        """Question headings create separate sections even in short text."""
         text = (
             "Что такое генераторная функция\n\n"
             "Генераторная функция - функция, в теле которой встречается yield.\n\n"
@@ -179,7 +179,7 @@ class TestPrepareParapgraphs:
         assert "В чем отличие" in result[2]
 
     def test_heading_merged_with_content(self, generator: MaterialGenerator) -> None:
-        """Заголовок мержится с последующим контентом в одну секцию."""
+        """Heading is merged with following content into one section."""
         text = (
             "Что такое итератор\n\n"
             "Итератор — это объект, который представляет поток данных. "
@@ -191,14 +191,14 @@ class TestPrepareParapgraphs:
         assert "__next__" in result[0]
 
     def test_non_heading_paragraphs_merge_normally(self, generator: MaterialGenerator) -> None:
-        """Абзацы без заголовков мержатся по обычным правилам."""
+        """Paragraphs without headings merge by normal rules."""
         text = (
             "Фотосинтез — процесс преобразования световой энергии в химическую.\n\n"
             "Он происходит в хлоропластах растительных клеток.\n\n"
             "Результатом является глюкоза и кислород."
         )
         result = generator._prepare_paragraphs(text)
-        # Всё <3000, нет заголовков → 1 чанк
+        # All <3000, no headings -> 1 chunk
         assert len(result) == 1
 
     def test_short_paragraphs_filtered(self, generator: MaterialGenerator) -> None:
@@ -213,7 +213,7 @@ class TestPrepareParapgraphs:
 
 
 # ---------------------------------------------------------------------------
-# Map-reduce генерация — без картинок
+# Map-reduce generation — without images
 # ---------------------------------------------------------------------------
 
 
@@ -246,7 +246,7 @@ class TestGenerate:
         mock_client: MagicMock,
         base_request: CardRequest,
     ) -> None:
-        """Map-reduce: 2 вызова generate_text — extract + generate."""
+        """Map-reduce: 2 calls to generate_text — extract + generate."""
         generator.generate(base_request, MagicMock())
         assert mock_client.generate_text.call_count == 2
 
@@ -277,7 +277,7 @@ class TestGenerate:
         mock_client: MagicMock,
         base_request: CardRequest,
     ) -> None:
-        """Extract phase вызывается с temperature=0.2."""
+        """Extract phase is called with temperature=0.2."""
         generator.generate(base_request, MagicMock())
         extract_call = mock_client.generate_text.call_args_list[0]
         assert extract_call.kwargs.get("temperature") == 0.2
@@ -288,7 +288,7 @@ class TestGenerate:
         mock_client: MagicMock,
         base_request: CardRequest,
     ) -> None:
-        """Generate phase вызывается с temperature=0.3."""
+        """Generate phase is called with temperature=0.3."""
         generator.generate(base_request, MagicMock())
         generate_call = mock_client.generate_text.call_args_list[1]
         assert generate_call.kwargs.get("temperature") == 0.3
@@ -299,7 +299,7 @@ class TestGenerate:
         mock_client: MagicMock,
         base_request: CardRequest,
     ) -> None:
-        """Extract prompt содержит маркеры типов знаний."""
+        """Extract prompt contains knowledge type markers."""
         generator.generate(base_request, MagicMock())
         extract_prompt = mock_client.generate_text.call_args_list[0][0][0]
         assert "DEFINITION" in extract_prompt
@@ -314,7 +314,7 @@ class TestGenerate:
         mock_client: MagicMock,
         base_request: CardRequest,
     ) -> None:
-        """Generate prompt содержит type-specific инструкции."""
+        """Generate prompt contains type-specific instructions."""
         generator.generate(base_request, MagicMock())
         generate_prompt = mock_client.generate_text.call_args_list[1][0][0]
         assert "DEFINITION" in generate_prompt
@@ -327,7 +327,7 @@ class TestGenerate:
         mock_client: MagicMock,
         base_request: CardRequest,
     ) -> None:
-        """Extract prompt содержит тип CODE для кода."""
+        """Extract prompt contains CODE type for code."""
         generator.generate(base_request, MagicMock())
         extract_prompt = mock_client.generate_text.call_args_list[0][0][0]
         assert "CODE" in extract_prompt
@@ -338,11 +338,11 @@ class TestGenerate:
         mock_client: MagicMock,
         base_request: CardRequest,
     ) -> None:
-        """Generate prompt инструктирует включать code snippets."""
+        """Generate prompt instructs to include code snippets."""
         generator.generate(base_request, MagicMock())
         generate_prompt = mock_client.generate_text.call_args_list[1][0][0]
         assert "code" in generate_prompt.lower()
-        assert "```" in generate_prompt  # markdown code block в примерах
+        assert "```" in generate_prompt  # markdown code block in examples
 
     def test_no_image_generation_without_flag(
         self,
@@ -379,7 +379,7 @@ class TestGenerate:
 
 class TestCostTracking:
     def test_current_cost_accumulated(self, mock_client: MagicMock) -> None:
-        """current_cost накапливается из client.last_cost после каждого вызова."""
+        """current_cost accumulates from client.last_cost after each call."""
         mock_client.generate_text.side_effect = [_AI_EXTRACT_RESPONSE, _AI_GENERATE_RESPONSE]
         mock_client.last_cost = 0.005
         generator = MaterialGenerator(client=mock_client, text_model="m1")
@@ -394,7 +394,7 @@ class TestCostTracking:
             costs.append(progress.current_cost)
 
         generator.generate(request, capture)
-        # extract + generate = 2 вызова × $0.005 = $0.01, + 2 карточки callbacks
+        # extract + generate = 2 calls x $0.005 = $0.01, + 2 cards callbacks
         assert costs[-1] == pytest.approx(0.01, abs=0.001)
 
 
@@ -412,7 +412,7 @@ class TestMaxCards:
         assert "5" in extract_prompt
 
     def test_max_cards_clamped_to_range(self, mock_client: MagicMock) -> None:
-        """Значения за пределами 1-5 обрезаются."""
+        """Values outside 1-5 range are clamped."""
         generator = MaterialGenerator(client=mock_client, text_model="m1")
         request = CardRequest(
             mode=GenerationMode.MATERIAL,
@@ -426,7 +426,7 @@ class TestMaxCards:
         assert "5" in extract_prompt
 
     def test_max_cards_min_clamped(self, mock_client: MagicMock) -> None:
-        """Значение 0 обрезается до 1."""
+        """Value 0 is clamped to 1."""
         generator = MaterialGenerator(client=mock_client, text_model="m1")
         request = CardRequest(
             mode=GenerationMode.MATERIAL,
@@ -440,7 +440,7 @@ class TestMaxCards:
 
 
 # ---------------------------------------------------------------------------
-# Генерация с картинками
+# Generation with images
 # ---------------------------------------------------------------------------
 
 
@@ -478,14 +478,14 @@ class TestGenerateWithImages:
         mock_client: MagicMock,
         request_with_images: CardRequest,
     ) -> None:
-        """include_images=True но image_model не задана — картинки не генерируются."""
+        """include_images=True but image_model is not set — images are not generated."""
         cards = generator.generate(request_with_images, MagicMock())
         assert all(c.image_data is None for c in cards)
         assert all(c.note_type == QA_NOTE_TYPE_NAME for c in cards)
         mock_client.generate_image.assert_not_called()
 
     def test_image_size_passed_to_client(self, mock_client: MagicMock) -> None:
-        """image_size передаётся в generate_image."""
+        """image_size is passed to generate_image."""
         mock_client.generate_text.side_effect = [_AI_EXTRACT_RESPONSE, _AI_GENERATE_RESPONSE]
         generator = MaterialGenerator(client=mock_client, text_model="m1", image_model="img-model", image_size="2K")
         request = CardRequest(
@@ -506,7 +506,7 @@ class TestGenerateWithImages:
 
 class TestCustomPrompt:
     def test_custom_prompt_single_pass(self, mock_client: MagicMock) -> None:
-        """Custom prompt использует single-pass (один вызов вместо двух)."""
+        """Custom prompt uses single-pass (one call instead of two)."""
         mock_client.generate_text.side_effect = [_AI_GENERATE_RESPONSE]
         generator = MaterialGenerator(client=mock_client, text_model="m1")
         request = CardRequest(
@@ -516,14 +516,14 @@ class TestCustomPrompt:
             custom_prompt="My custom prompt with QUESTION: and ANSWER: format",
         )
         cards = generator.generate(request, MagicMock())
-        # Single-pass: только 1 вызов generate_text
+        # Single-pass: only 1 call to generate_text
         assert mock_client.generate_text.call_count == 1
         prompt = mock_client.generate_text.call_args[0][0]
         assert "My custom prompt" in prompt
         assert len(cards) == 2
 
     def test_custom_prompt_no_temperature(self, mock_client: MagicMock) -> None:
-        """Custom prompt (single-pass) не передаёт temperature."""
+        """Custom prompt (single-pass) does not pass temperature."""
         mock_client.generate_text.side_effect = [_AI_GENERATE_RESPONSE]
         generator = MaterialGenerator(client=mock_client, text_model="m1")
         request = CardRequest(
@@ -551,7 +551,7 @@ class TestCustomPrompt:
 
 
 # ---------------------------------------------------------------------------
-# Progress и отмена
+# Progress and cancellation
 # ---------------------------------------------------------------------------
 
 
@@ -568,7 +568,7 @@ class TestProgress:
             snapshots.append(progress.completed_cards)
 
         generator.generate(base_request, capture_progress)
-        # 2 карточки → completed_cards должен дойти до 2
+        # 2 cards -> completed_cards should reach 2
         assert snapshots[-1] == 2
 
     def test_total_cards_updated(
@@ -591,17 +591,17 @@ class TestCancellation:
         self,
         mock_client: MagicMock,
     ) -> None:
-        """Генерация останавливается при is_cancelled (между чанками)."""
-        # Два больших абзаца (>1600 символов каждый → не мержатся), cancel после первого
+        """Generation stops on is_cancelled (between chunks)."""
+        # Two large paragraphs (>1600 chars each -> not merged), cancel after first
         mock_client.generate_text.side_effect = [
             "1. Факт 1",
             _AI_RESPONSE_ONE_PAIR,
-            # Второй чанк не должен обрабатываться
+            # Second chunk should not be processed
         ]
         generator = MaterialGenerator(client=mock_client, text_model="m1")
 
-        para1 = "Фотосинтез — процесс преобразования. " * 50  # ~1850 символов
-        para2 = "ДНК хранит генетическую информацию. " * 50  # ~1850 символов
+        para1 = "Фотосинтез — процесс преобразования. " * 50  # ~1850 chars
+        para2 = "ДНК хранит генетическую информацию. " * 50  # ~1850 chars
 
         request = CardRequest(
             mode=GenerationMode.MATERIAL,
@@ -615,12 +615,12 @@ class TestCancellation:
 
         cards = generator.generate(request, cancel_after_first_chunk)
         assert len(cards) == 1
-        # Только 2 вызова AI (extract + generate для первого чанка)
+        # Only 2 AI calls (extract + generate for first chunk)
         assert mock_client.generate_text.call_count == 2
 
 
 # ---------------------------------------------------------------------------
-# Несколько абзацев → несколько extract/generate циклов
+# Multiple paragraphs -> multiple extract/generate cycles
 # ---------------------------------------------------------------------------
 
 
@@ -629,7 +629,7 @@ class TestMultiParagraph:
         self,
         mock_client: MagicMock,
     ) -> None:
-        """Два небольших абзаца (~600 символов) мержатся → 1 чанк, 2 вызова AI."""
+        """Two small paragraphs (~600 chars) merge -> 1 chunk, 2 AI calls."""
         mock_client.generate_text.side_effect = [
             "1. Факт 1",
             _AI_RESPONSE_ONE_PAIR,
@@ -655,7 +655,7 @@ class TestMultiParagraph:
         )
 
         cards = generator.generate(request, MagicMock())
-        # Мерж в 1 чанк → 2 вызова AI (extract + generate)
+        # Merged into 1 chunk -> 2 AI calls (extract + generate)
         assert mock_client.generate_text.call_count == 2
         assert len(cards) == 1
 
@@ -663,7 +663,7 @@ class TestMultiParagraph:
         self,
         mock_client: MagicMock,
     ) -> None:
-        """Два больших абзаца (>1500 символов каждый) → 2 чанка, 4 вызова AI."""
+        """Two large paragraphs (>1500 chars each) -> 2 chunks, 4 AI calls."""
         mock_client.generate_text.side_effect = [
             "1. Факт 1",
             _AI_RESPONSE_ONE_PAIR,
@@ -673,7 +673,7 @@ class TestMultiParagraph:
 
         generator = MaterialGenerator(client=mock_client, text_model="m1")
 
-        # Каждый абзац ~1850 символов → суммарно >3000, не мержатся
+        # Each paragraph ~1850 chars -> total >3000, not merged
         para1 = "Фотосинтез — процесс преобразования. " * 50
         para2 = "ДНК хранит генетическую информацию. " * 50
 
@@ -689,13 +689,13 @@ class TestMultiParagraph:
 
 
 # ---------------------------------------------------------------------------
-# AnswerDetail — детальность ответа в промпте
+# AnswerDetail — answer detail level in prompt
 # ---------------------------------------------------------------------------
 
 
 class TestAnswerDetail:
     def test_short_prompt_contains_1_2_sentences(self, mock_client: MagicMock) -> None:
-        """SHORT: промпт содержит '1-2 sentences maximum'."""
+        """SHORT: prompt contains '1-2 sentences maximum'."""
         generator = MaterialGenerator(client=mock_client, text_model="m1")
         request = CardRequest(
             mode=GenerationMode.MATERIAL,
@@ -708,7 +708,7 @@ class TestAnswerDetail:
         assert "1-2 sentences maximum" in generate_prompt
 
     def test_medium_prompt_contains_2_4_sentences(self, mock_client: MagicMock) -> None:
-        """MEDIUM: промпт содержит '2-4 sentences'."""
+        """MEDIUM: prompt contains '2-4 sentences'."""
         mock_client.generate_text.side_effect = [_AI_EXTRACT_RESPONSE, _AI_GENERATE_RESPONSE]
         generator = MaterialGenerator(client=mock_client, text_model="m1")
         request = CardRequest(
@@ -722,7 +722,7 @@ class TestAnswerDetail:
         assert "2-4 sentences" in generate_prompt
 
     def test_detailed_prompt_contains_comprehensive(self, mock_client: MagicMock) -> None:
-        """DETAILED: промпт содержит 'comprehensive explanation'."""
+        """DETAILED: prompt contains 'comprehensive explanation'."""
         mock_client.generate_text.side_effect = [_AI_EXTRACT_RESPONSE, _AI_GENERATE_RESPONSE]
         generator = MaterialGenerator(client=mock_client, text_model="m1")
         request = CardRequest(
@@ -736,7 +736,7 @@ class TestAnswerDetail:
         assert "comprehensive explanation" in generate_prompt
 
     def test_default_without_material_options_uses_short(self, mock_client: MagicMock) -> None:
-        """Без material_options — используется SHORT."""
+        """Without material_options — SHORT is used."""
         generator = MaterialGenerator(client=mock_client, text_model="m1")
         request = CardRequest(
             mode=GenerationMode.MATERIAL,

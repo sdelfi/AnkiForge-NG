@@ -1,4 +1,4 @@
-"""Кнопка 'Generate Cards' на главном экране Anki + интеграция с меню."""
+"""'Generate Cards' button on Anki main screen + menu integration."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
 
 # ---------------------------------------------------------------------------
-# Описания режимов генерации
+# Generation mode descriptions
 # ---------------------------------------------------------------------------
 
 MODE_DESCRIPTIONS: dict[GenerationMode, dict[str, str]] = {
@@ -38,14 +38,14 @@ MODE_DESCRIPTIONS: dict[GenerationMode, dict[str, str]] = {
 
 
 # ---------------------------------------------------------------------------
-# Обработчик клика
+# Click handler
 # ---------------------------------------------------------------------------
 
 
 def _on_generate_clicked(mw: AnkiQt) -> None:
-    """Обработчик клика — проверяет конфиг и открывает диалог выбора режима.
+    """Click handler — checks config and opens mode selection dialog.
 
-    Поддерживает навигацию "Назад" из InputDialog в GenerateDialog.
+    Supports "Back" navigation from InputDialog to GenerateDialog.
     """
     from ankiforge.ui.generate_dialog import _should_open_settings_first
 
@@ -64,29 +64,29 @@ def _on_generate_clicked(mw: AnkiQt) -> None:
         selected_mode = generate_dialog.run()
 
         if selected_mode is None:
-            return  # пользователь отменил
+            return  # user cancelled
 
         input_dialog = InputDialog(mw, selected_mode)
         go_back = input_dialog.run()
 
         if not go_back:
-            return  # пользователь закрыл или завершил генерацию
+            return  # user closed or finished generation
 
 
 # ---------------------------------------------------------------------------
-# DeckBrowser: кнопка в нижней панели
+# DeckBrowser: bottom panel button
 # ---------------------------------------------------------------------------
 
 _ANKIFORGE_CMD = "_ankiforgeGenerate"
 
 
 def _on_deck_browser_content(deck_browser: object, content: object) -> None:  # noqa: ANN001
-    """Добавляет кнопку AnkiForge в нижнюю панель DeckBrowser."""
-    # drawLinks — атрибут DeckBrowser, не DeckBrowserContent
-    # Формат: [shortcut, command, label]
+    """Add AnkiForge button to DeckBrowser bottom panel."""
+    # drawLinks — attribute of DeckBrowser, not DeckBrowserContent
+    # Format: [shortcut, command, label]
     for link in deck_browser.drawLinks:  # type: ignore[attr-defined]
         if link[1] == _ANKIFORGE_CMD:
-            return  # уже добавлена
+            return  # already added
     deck_browser.drawLinks.append(["", _ANKIFORGE_CMD, "Generate Cards"])  # type: ignore[attr-defined]
 
 
@@ -96,7 +96,7 @@ def _on_js_message(
     message: str,
     context: object,
 ) -> tuple[bool, object]:
-    """Обрабатывает JS-сообщение от кнопки AnkiForge в DeckBrowser."""
+    """Handle JS message from AnkiForge button in DeckBrowser."""
     if message == _ANKIFORGE_CMD:
         _on_generate_clicked(mw)
         return (True, None)
@@ -104,10 +104,10 @@ def _on_js_message(
 
 
 def setup_deck_browser_button(mw: AnkiQt) -> None:
-    """Регистрирует кнопку AnkiForge в нижней панели DeckBrowser.
+    """Register AnkiForge button in DeckBrowser bottom panel.
 
     Args:
-        mw: Главное окно Anki.
+        mw: Anki main window.
     """
     from aqt import gui_hooks  # type: ignore[import-not-found]
 
@@ -116,15 +116,15 @@ def setup_deck_browser_button(mw: AnkiQt) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Меню Tools
+# Tools menu
 # ---------------------------------------------------------------------------
 
 
 def setup_main_button(mw: AnkiQt) -> None:
-    """Добавляет пункт 'Generate Cards' в меню Tools.
+    """Add 'Generate Cards' item to Tools menu.
 
     Args:
-        mw: Главное окно Anki.
+        mw: Anki main window.
     """
     action = mw.form.menuTools.addAction("Generate Cards...")
     action.triggered.connect(lambda: _on_generate_clicked(mw))

@@ -1,4 +1,4 @@
-"""Тесты для ankiforge.anki_bridge.note_types."""
+"""Tests for ankiforge.anki_bridge.note_types."""
 
 from __future__ import annotations
 
@@ -26,9 +26,9 @@ LANGUAGE_NOTE_TYPE_NAME = "AnkiForge Language"
 
 
 def _make_mock_mw() -> MagicMock:
-    """Создаёт мок главного окна Anki (mw) с col.models."""
+    """Create a mock Anki main window (mw) with col.models."""
     mw = MagicMock()
-    mw.col.models.by_name.return_value = None  # note type не существует
+    mw.col.models.by_name.return_value = None  # note type does not exist
 
     model: dict[str, Any] = {
         "name": "",
@@ -38,8 +38,8 @@ def _make_mock_mw() -> MagicMock:
     }
     mw.col.models.new.return_value = model
 
-    # Имитируем поведение Anki: new_field/new_template возвращают dict,
-    # add_field/add_template добавляют в списки модели.
+    # Simulate Anki behavior: new_field/new_template return dicts,
+    # add_field/add_template append to model lists.
     mw.col.models.new_field.side_effect = lambda name: {"name": name}
     mw.col.models.add_field.side_effect = lambda m, f: m["flds"].append(f)
     mw.col.models.new_template.side_effect = lambda name: {"name": name, "qfmt": "", "afmt": ""}
@@ -50,23 +50,23 @@ def _make_mock_mw() -> MagicMock:
 
 @pytest.fixture()
 def mock_mw() -> MagicMock:
-    """Мок главного окна Anki (mw) с col.models."""
+    """Mock Anki main window (mw) with col.models."""
     return _make_mock_mw()
 
 
 @pytest.fixture()
 def language_mock_mw() -> MagicMock:
-    """Отдельный мок для Language тестов (свой model dict)."""
+    """Separate mock for Language tests (own model dict)."""
     return _make_mock_mw()
 
 
 # ---------------------------------------------------------------------------
-# ensure_qa_note_type — создание нового
+# ensure_qa_note_type — creating new
 # ---------------------------------------------------------------------------
 
 
 class TestEnsureQaNoteTypeCreatesNew:
-    """Тесты создания нового note type, когда его ещё нет."""
+    """Tests for creating a new note type when it does not exist yet."""
 
     def test_creates_note_type_when_not_exists(self, mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
@@ -132,12 +132,12 @@ class TestEnsureQaNoteTypeCreatesNew:
 
 
 # ---------------------------------------------------------------------------
-# ensure_qa_note_type — существующий note type
+# ensure_qa_note_type — existing note type
 # ---------------------------------------------------------------------------
 
 
 class TestEnsureQaNoteTypeExisting:
-    """Тесты когда note type уже существует."""
+    """Tests when the note type already exists."""
 
     def test_returns_existing_note_type(self, mock_mw: MagicMock) -> None:
         existing = {"name": NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
@@ -151,19 +151,19 @@ class TestEnsureQaNoteTypeExisting:
 
 
 # ---------------------------------------------------------------------------
-# HTML валидность (QA)
+# HTML validity (QA)
 # ---------------------------------------------------------------------------
 
 
 class TestTemplateHtmlValidity:
-    """Проверка базовой валидности HTML шаблонов."""
+    """Basic HTML validity check for templates."""
 
     def test_front_template_is_valid_html(self, mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
             result = ensure_qa_note_type()
 
         front = result["tmpls"][0]["qfmt"]
-        # Базовая проверка: содержит HTML-теги
+        # Basic check: contains HTML tags
         assert "<div" in front or "<p" in front or "<span" in front
 
     def test_back_template_is_valid_html(self, mock_mw: MagicMock) -> None:
@@ -180,7 +180,7 @@ class TestTemplateHtmlValidity:
 
 
 class TestEnsureLanguageNoteTypeCreatesNew:
-    """Тесты создания нового Language note type."""
+    """Tests for creating a new Language note type."""
 
     def test_creates_note_type_when_not_exists(self, language_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
@@ -338,12 +338,12 @@ class TestEnsureLanguageNoteTypeCreatesNew:
 
 
 # ---------------------------------------------------------------------------
-# ensure_language_note_type — существующий
+# ensure_language_note_type — existing
 # ---------------------------------------------------------------------------
 
 
 class TestEnsureLanguageNoteTypeExisting:
-    """Тесты когда Language note type уже существует."""
+    """Tests when Language note type already exists."""
 
     def test_returns_existing_note_type_and_upgrades(self, language_mock_mw: MagicMock) -> None:
         existing: dict[str, Any] = {
@@ -359,18 +359,18 @@ class TestEnsureLanguageNoteTypeExisting:
 
         assert result is existing
         language_mock_mw.col.models.add.assert_not_called()
-        # Upgrade добавляет 4 новых поля (AudioDefinition, AudioSilence, AudioExample, Transcription)
+        # Upgrade adds 4 new fields (AudioDefinition, AudioSilence, AudioExample, Transcription)
         assert language_mock_mw.col.models.add_field.call_count == 4
         language_mock_mw.col.models.save.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
-# HTML валидность (Language)
+# HTML validity (Language)
 # ---------------------------------------------------------------------------
 
 
 class TestLanguageTemplateHtmlValidity:
-    """Проверка базовой валидности HTML шаблонов Language."""
+    """Basic HTML validity check for Language templates."""
 
     def test_front_template_is_valid_html(self, language_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
@@ -396,12 +396,12 @@ QA_IMAGE_NOTE_TYPE_NAME = "AnkiForge QA+Image"
 
 @pytest.fixture()
 def qa_image_mock_mw() -> MagicMock:
-    """Мок для QA+Image тестов."""
+    """Mock for QA+Image tests."""
     return _make_mock_mw()
 
 
 class TestEnsureQaImageNoteTypeCreatesNew:
-    """Тесты создания нового QA+Image note type."""
+    """Tests for creating a new QA+Image note type."""
 
     def test_creates_note_type_when_not_exists(self, qa_image_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
@@ -504,7 +504,7 @@ class TestEnsureQaImageNoteTypeCreatesNew:
 
 
 class TestEnsureQaImageNoteTypeExisting:
-    """Тесты когда QA+Image note type уже существует."""
+    """Tests when QA+Image note type already exists."""
 
     def test_returns_existing_note_type(self, qa_image_mock_mw: MagicMock) -> None:
         existing = {"name": QA_IMAGE_NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
@@ -518,7 +518,7 @@ class TestEnsureQaImageNoteTypeExisting:
 
 
 class TestQaImageTemplateHtmlValidity:
-    """Проверка базовой валидности HTML шаблонов QA+Image."""
+    """Basic HTML validity check for QA+Image templates."""
 
     def test_front_template_is_valid_html(self, qa_image_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
@@ -544,12 +544,12 @@ QA_AUDIO_NOTE_TYPE_NAME = "AnkiForge QA+Audio"
 
 @pytest.fixture()
 def qa_audio_mock_mw() -> MagicMock:
-    """Мок для QA+Audio тестов."""
+    """Mock for QA+Audio tests."""
     return _make_mock_mw()
 
 
 class TestEnsureQaAudioNoteTypeCreatesNew:
-    """Тесты создания нового QA+Audio note type."""
+    """Tests for creating a new QA+Audio note type."""
 
     def test_creates_note_type_when_not_exists(self, qa_audio_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
@@ -640,7 +640,7 @@ class TestEnsureQaAudioNoteTypeCreatesNew:
 
 
 class TestEnsureQaAudioNoteTypeExisting:
-    """Тесты когда QA+Audio note type уже существует."""
+    """Tests when QA+Audio note type already exists."""
 
     def test_returns_existing_note_type(self, qa_audio_mock_mw: MagicMock) -> None:
         existing = {"name": QA_AUDIO_NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
@@ -654,7 +654,7 @@ class TestEnsureQaAudioNoteTypeExisting:
 
 
 class TestQaAudioTemplateHtmlValidity:
-    """Проверка базовой валидности HTML шаблонов QA+Audio."""
+    """Basic HTML validity check for QA+Audio templates."""
 
     def test_front_template_is_valid_html(self, qa_audio_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):

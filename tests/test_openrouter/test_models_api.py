@@ -1,4 +1,4 @@
-"""Тесты для fetch_models и estimate_cost в OpenRouterClient."""
+"""Tests for fetch_models and estimate_cost in OpenRouterClient."""
 
 from __future__ import annotations
 
@@ -206,7 +206,7 @@ class TestCaching:
         mock_time.side_effect = [0.0, 0.0, 400.0, 400.0]
         client = OpenRouterClient(api_key=API_KEY, models_cache_ttl=300)
         client.fetch_models()
-        client.fetch_models()  # ttl прошёл — делает новый запрос
+        client.fetch_models()  # TTL expired — makes a new request
         assert mock_get.call_count == 2
 
     @patch("ankiforge.openrouter.client.requests.get")
@@ -219,11 +219,11 @@ class TestCaching:
 
 
 class TestParseModalities:
-    """Тесты парсинга строки модальности."""
+    """Tests for modality string parsing."""
 
     @patch("ankiforge.openrouter.client.requests.get")
     def test_empty_modality_string(self, mock_get: MagicMock) -> None:
-        """Пустая строка модальности — пустой список."""
+        """Empty modality string results in an empty list."""
         data: dict[str, object] = {
             "data": [
                 {
@@ -242,7 +242,7 @@ class TestParseModalities:
 
     @patch("ankiforge.openrouter.client.requests.get")
     def test_compound_output_modality(self, mock_get: MagicMock) -> None:
-        """Compound output парсит несколько модальностей (text+image->text+audio)."""
+        """Compound output parses multiple modalities (text+image->text+audio)."""
         data: dict[str, object] = {
             "data": [
                 {
@@ -354,25 +354,25 @@ class TestEstimateCost:
         assert cost_10 > cost_5
 
     def test_estimate_cost_negative_cards(self) -> None:
-        """Отрицательное количество карточек -> стоимость 0."""
+        """Negative card count results in cost 0."""
         client = OpenRouterClient(api_key=API_KEY)
         cost = client.estimate_cost(mode="questions", card_count=-5, text_model=self._make_text_model())
         assert cost == 0.0
 
     def test_estimate_cost_no_models_provided(self) -> None:
-        """Без моделей — стоимость 0."""
+        """No models provided results in cost 0."""
         client = OpenRouterClient(api_key=API_KEY)
         cost = client.estimate_cost(mode="questions", card_count=10)
         assert cost == 0.0
 
     def test_estimate_cost_language_text_only(self) -> None:
-        """Language mode с одним text_model — считает только текст."""
+        """Language mode with only text_model counts text cost only."""
         client = OpenRouterClient(api_key=API_KEY)
         cost = client.estimate_cost(mode="language", card_count=10, text_model=self._make_text_model())
         assert cost > 0.0
 
     def test_estimate_cost_exact_calculation(self) -> None:
-        """Проверяем точный расчёт для questions mode."""
+        """Verify exact calculation for questions mode."""
         client = OpenRouterClient(api_key=API_KEY)
         text_model = self._make_text_model()
         cost = client.estimate_cost(mode="questions", card_count=1, text_model=text_model)

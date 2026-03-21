@@ -1,4 +1,4 @@
-"""Управление типами заметок (note types) AnkiForge."""
+"""AnkiForge note type management."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 from ankiforge.anki_bridge.deck_manager import _get_mw
 
 # ---------------------------------------------------------------------------
-# Константы
+# Constants
 # ---------------------------------------------------------------------------
 
 QA_NOTE_TYPE_NAME = "AnkiForge QA"
@@ -15,7 +15,7 @@ QA_IMAGE_NOTE_TYPE_NAME = "AnkiForge QA+Image"
 QA_AUDIO_NOTE_TYPE_NAME = "AnkiForge QA+Audio"
 LANGUAGE_NOTE_TYPE_NAME = "AnkiForge Language"
 
-# highlight.js — подсветка синтаксиса в code blocks
+# highlight.js — syntax highlighting for code blocks
 _HLJS_SCRIPT = (
     '<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0'
     '/highlight.min.js"></script>\n'
@@ -373,10 +373,10 @@ _LANGUAGE_FIELDS = (
 
 
 def ensure_qa_note_type() -> dict[str, Any]:
-    """Создаёт или находит существующий note type 'AnkiForge QA'.
+    """Create or find existing 'AnkiForge QA' note type.
 
     Returns:
-        Словарь note type (Anki model dict).
+        Note type dict (Anki model dict).
     """
     mw = _get_mw()
     models = mw.col.models
@@ -404,10 +404,10 @@ def ensure_qa_note_type() -> dict[str, Any]:
 
 
 def ensure_qa_image_note_type() -> dict[str, Any]:
-    """Создаёт или находит существующий note type 'AnkiForge QA+Image'.
+    """Create or find existing 'AnkiForge QA+Image' note type.
 
     Returns:
-        Словарь note type (Anki model dict).
+        Note type dict (Anki model dict).
     """
     mw = _get_mw()
     models = mw.col.models
@@ -435,10 +435,10 @@ def ensure_qa_image_note_type() -> dict[str, Any]:
 
 
 def ensure_qa_audio_note_type() -> dict[str, Any]:
-    """Создаёт или находит существующий note type 'AnkiForge QA+Audio'.
+    """Create or find existing 'AnkiForge QA+Audio' note type.
 
     Returns:
-        Словарь note type (Anki model dict).
+        Note type dict (Anki model dict).
     """
     mw = _get_mw()
     models = mw.col.models
@@ -466,13 +466,13 @@ def ensure_qa_audio_note_type() -> dict[str, Any]:
 
 
 def ensure_language_note_type() -> dict[str, Any]:
-    """Создаёт или находит существующий note type 'AnkiForge Language'.
+    """Create or find existing 'AnkiForge Language' note type.
 
-    Если note type уже существует — вызывает upgrade для добавления недостающих полей
-    и обновления шаблонов.
+    If the note type already exists, runs upgrade to add missing fields
+    and update templates.
 
     Returns:
-        Словарь note type (Anki model dict).
+        Note type dict (Anki model dict).
     """
     mw = _get_mw()
     models = mw.col.models
@@ -500,14 +500,14 @@ def ensure_language_note_type() -> dict[str, Any]:
 
 
 def _upgrade_language_note_type(model: dict[str, Any], models: Any) -> dict[str, Any]:  # noqa: ANN401
-    """Добавляет недостающие поля и обновляет шаблоны существующего Language note type.
+    """Add missing fields and update templates for existing Language note type.
 
     Args:
-        model: Существующий note type dict.
+        model: Existing note type dict.
         models: Anki ModelManager.
 
     Returns:
-        Обновлённый note type dict.
+        Updated note type dict.
     """
     existing_field_names = {f["name"] for f in model["flds"]}
     changed = False

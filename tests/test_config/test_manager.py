@@ -1,4 +1,4 @@
-"""Тесты для ankiforge.config.manager."""
+"""Tests for ankiforge.config.manager."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture()
 def mock_mw() -> MagicMock:
-    """Мок главного окна Anki (mw) с addonManager."""
+    """Mock of the Anki main window (mw) with addonManager."""
     mw = MagicMock()
     mw.addonManager.getConfig.return_value = {
         "api_key": "sk-or-test-key-123",
@@ -36,7 +36,7 @@ def mock_mw() -> MagicMock:
 
 @pytest.fixture()
 def default_config_dict() -> dict[str, str]:
-    """Дефолтный конфиг (пустые поля)."""
+    """Default config (empty fields)."""
     return {
         "api_key": "",
         "text_model": "",
@@ -52,7 +52,7 @@ def default_config_dict() -> dict[str, str]:
 
 
 class TestGetConfig:
-    """Тесты get_config()."""
+    """Tests for get_config()."""
 
     def test_reads_from_anki_addon_manager(self, mock_mw: MagicMock) -> None:
         with patch("ankiforge.config.manager._get_mw", return_value=mock_mw):
@@ -65,7 +65,7 @@ class TestGetConfig:
         assert config.language == "en"
 
     def test_returns_defaults_when_anki_unavailable(self, tmp_path: Path) -> None:
-        """Fallback — читает config.json из пакета."""
+        """Fallback — reads config.json from the package."""
         with patch("ankiforge.config.manager._get_mw", side_effect=RuntimeError):
             config = get_config()
 
@@ -74,7 +74,7 @@ class TestGetConfig:
         assert config.language == "en"
 
     def test_handles_partial_config(self, mock_mw: MagicMock) -> None:
-        """Если в конфиге нет каких-то полей — используются дефолты."""
+        """If some fields are missing from config — defaults are used."""
         mock_mw.addonManager.getConfig.return_value = {
             "api_key": "sk-or-key",
         }
@@ -87,7 +87,7 @@ class TestGetConfig:
         assert config.language == "en"
 
     def test_handles_none_config(self, mock_mw: MagicMock) -> None:
-        """Если getConfig вернул None."""
+        """If getConfig returns None."""
         mock_mw.addonManager.getConfig.return_value = None
 
         with patch("ankiforge.config.manager._get_mw", return_value=mock_mw):
@@ -102,7 +102,7 @@ class TestGetConfig:
 
 
 class TestSaveConfig:
-    """Тесты save_config()."""
+    """Tests for save_config()."""
 
     def test_writes_to_anki_addon_manager(self, mock_mw: MagicMock) -> None:
         config = AddonConfig(
@@ -118,12 +118,12 @@ class TestSaveConfig:
 
         mock_mw.addonManager.writeConfig.assert_called_once()
         call_args = mock_mw.addonManager.writeConfig.call_args
-        saved_data = call_args[0][1]  # второй позиционный аргумент
+        saved_data = call_args[0][1]  # second positional argument
         assert saved_data["api_key"] == "sk-or-new-key"
         assert saved_data["language"] == "ru"
 
     def test_saves_fallback_to_json_file(self, tmp_path: Path) -> None:
-        """Fallback — пишет в JSON-файл если Anki недоступен."""
+        """Fallback — writes to JSON file if Anki is unavailable."""
         config = AddonConfig(api_key="sk-or-fallback", language="de")
         fallback_path = tmp_path / "config.json"
 
@@ -144,7 +144,7 @@ class TestSaveConfig:
 
 
 class TestIsConfigured:
-    """Тесты is_configured()."""
+    """Tests for is_configured()."""
 
     def test_true_when_api_key_present(self, mock_mw: MagicMock) -> None:
         with patch("ankiforge.config.manager._get_mw", return_value=mock_mw):
@@ -173,7 +173,7 @@ class TestIsConfigured:
 
 
 class TestValidateApiKey:
-    """Тесты validate_api_key()."""
+    """Tests for validate_api_key()."""
 
     def test_empty_key_returns_false(self) -> None:
         is_valid, error = validate_api_key("")

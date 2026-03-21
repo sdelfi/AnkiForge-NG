@@ -1,4 +1,4 @@
-"""Чтение, запись и валидация конфигурации AnkiForge."""
+"""Reading, writing, and validation of AnkiForge configuration."""
 
 from __future__ import annotations
 
@@ -19,10 +19,10 @@ _ADDON_MODULE = "ankiforge"
 
 
 def _get_mw() -> AnkiQt:
-    """Получает главное окно Anki (mw).
+    """Get the Anki main window (mw).
 
     Raises:
-        RuntimeError: Если Anki runtime недоступен.
+        RuntimeError: If Anki runtime is not available.
     """
     try:
         from aqt import mw  # type: ignore[import-not-found]
@@ -38,12 +38,12 @@ def _get_mw() -> AnkiQt:
 
 
 def _fallback_config_path() -> Path:
-    """Путь к config.json в пакете (для fallback вне Anki)."""
+    """Path to config.json in the package (for fallback outside Anki)."""
     return Path(__file__).parent.parent / "config.json"
 
 
 def _parse_pricing(data: object) -> ModelPricingCache | None:
-    """Парсит pricing из словаря конфига."""
+    """Parse pricing from a config dictionary."""
     if not isinstance(data, dict):
         return None
     return ModelPricingCache(
@@ -55,7 +55,7 @@ def _parse_pricing(data: object) -> ModelPricingCache | None:
 
 
 def _dict_to_config(data: dict[str, object] | None) -> AddonConfig:
-    """Конвертирует словарь в AddonConfig с дефолтами для отсутствующих полей."""
+    """Convert a dictionary to AddonConfig with defaults for missing fields."""
     if not data:
         return AddonConfig()
 
@@ -80,13 +80,13 @@ def _dict_to_config(data: dict[str, object] | None) -> AddonConfig:
 
 
 def get_config() -> AddonConfig:
-    """Читает конфигурацию add-on.
+    """Read add-on configuration.
 
-    Сначала пытается прочитать через Anki Config API.
-    Если Anki недоступен — читает из config.json в пакете.
+    First tries to read via Anki Config API.
+    If Anki is unavailable — reads from config.json in the package.
 
     Returns:
-        Текущая конфигурация.
+        Current configuration.
     """
     try:
         mw = _get_mw()
@@ -95,7 +95,7 @@ def get_config() -> AddonConfig:
     except RuntimeError:
         pass
 
-    # Fallback: читаем config.json из пакета
+    # Fallback: read config.json from the package
     config_path = _fallback_config_path()
     if config_path.exists():
         data = json.loads(config_path.read_text(encoding="utf-8"))
@@ -105,13 +105,13 @@ def get_config() -> AddonConfig:
 
 
 def save_config(config: AddonConfig) -> None:
-    """Сохраняет конфигурацию add-on.
+    """Save add-on configuration.
 
-    Сначала пытается записать через Anki Config API.
-    Если Anki недоступен — пишет в config.json.
+    First tries to write via Anki Config API.
+    If Anki is unavailable — writes to config.json.
 
     Args:
-        config: Конфигурация для сохранения.
+        config: Configuration to save.
     """
     data = asdict(config)
 
@@ -122,16 +122,16 @@ def save_config(config: AddonConfig) -> None:
     except RuntimeError:
         pass
 
-    # Fallback: пишем в JSON-файл
+    # Fallback: write to JSON file
     config_path = _fallback_config_path()
     config_path.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
 
 
 def is_configured() -> bool:
-    """Проверяет, настроен ли add-on (есть ли API-ключ).
+    """Check whether the add-on is configured (API key is set).
 
     Returns:
-        True если API-ключ задан.
+        True if API key is present.
     """
     try:
         config = get_config()
@@ -141,15 +141,15 @@ def is_configured() -> bool:
 
 
 def validate_api_key(api_key: str) -> tuple[bool, str | None]:
-    """Валидирует API-ключ OpenRouter.
+    """Validate an OpenRouter API key.
 
-    Проверяет формат и делает запрос к OpenRouter API.
+    Checks the format and makes a request to the OpenRouter API.
 
     Args:
-        api_key: API-ключ для проверки.
+        api_key: API key to validate.
 
     Returns:
-        Кортеж (is_valid, error_message). Если валидный — (True, None).
+        Tuple (is_valid, error_message). If valid — (True, None).
     """
     if not api_key or not api_key.strip():
         return False, "API key is empty"
@@ -157,7 +157,7 @@ def validate_api_key(api_key: str) -> tuple[bool, str | None]:
     if not api_key.startswith("sk-or-"):
         return False, "API key must start with 'sk-or-'"
 
-    # Проверяем ключ запросом к OpenRouter
+    # Verify key with a request to OpenRouter
     try:
         resp = requests.get(
             _OPENROUTER_AUTH_URL,

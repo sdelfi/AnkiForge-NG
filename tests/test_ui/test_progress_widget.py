@@ -1,4 +1,4 @@
-"""Тесты для ankiforge.ui.progress_widget — утилиты прогресса генерации (TASK-021)."""
+"""Tests for ankiforge.ui.progress_widget — generation progress utilities (TASK-021)."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ from unittest.mock import MagicMock
 from ankiforge.models import GenerationMode
 
 # ---------------------------------------------------------------------------
-# Тесты _count_input_items
+# Tests for _count_input_items
 # ---------------------------------------------------------------------------
 
 
 class TestCountInputItems:
-    """Подсчёт количества элементов ввода по режиму."""
+    """Counting the number of input items by mode."""
 
     def test_questions_counts_lines(self) -> None:
         from ankiforge.ui.progress_widget import _count_input_items
@@ -42,7 +42,7 @@ class TestCountInputItems:
     def test_material_small_paragraphs_merge(self) -> None:
         from ankiforge.ui.progress_widget import _count_input_items
 
-        # 3 коротких абзаца мержатся в 1 чанк → 1 × 3 = 3
+        # 3 short paragraphs merge into 1 chunk → 1 × 3 = 3
         text = (
             "Абзац первый — достаточно длинный.\n\n"
             "Абзац второй — достаточно длинный.\n\n"
@@ -54,7 +54,7 @@ class TestCountInputItems:
     def test_material_topic_headings_split(self) -> None:
         from ankiforge.ui.progress_widget import _count_input_items
 
-        # 3 заголовка-вопроса → 3 чанка × 1 = 3
+        # 3 question headings → 3 chunks × 1 = 3
         text = (
             "Что такое генератор\n\nОбъяснение генератора достаточно подробное.\n\n"
             "Что такое итератор\n\nОбъяснение итератора достаточно подробное.\n\n"
@@ -66,7 +66,7 @@ class TestCountInputItems:
     def test_material_single_paragraph(self) -> None:
         from ankiforge.ui.progress_widget import _count_input_items
 
-        # Один абзац → 1 × 3 = 3
+        # Single paragraph → 1 × 3 = 3
         count = _count_input_items("Достаточно длинный текст без разбиения.", GenerationMode.MATERIAL)
         assert count == 3
 
@@ -97,12 +97,12 @@ class TestCountInputItems:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _format_cost
+# Tests for _format_cost
 # ---------------------------------------------------------------------------
 
 
 class TestFormatCost:
-    """Форматирование стоимости."""
+    """Cost formatting."""
 
     def test_zero_cost(self) -> None:
         from ankiforge.ui.progress_widget import _format_cost
@@ -126,12 +126,12 @@ class TestFormatCost:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _find_model_by_id
+# Tests for _find_model_by_id
 # ---------------------------------------------------------------------------
 
 
 class TestFindModelById:
-    """Поиск модели по ID в списке."""
+    """Finding a model by ID in a list."""
 
     def test_finds_existing_model(self) -> None:
         from ankiforge.openrouter.models import Model
@@ -166,12 +166,12 @@ class TestFindModelById:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _estimate_and_format_cost
+# Tests for _estimate_and_format_cost
 # ---------------------------------------------------------------------------
 
 
 class TestEstimateAndFormatCost:
-    """Расчёт и форматирование оценки стоимости."""
+    """Calculation and formatting of cost estimates."""
 
     def test_returns_formatted_cost(self) -> None:
         from ankiforge.ui.progress_widget import _estimate_and_format_cost

@@ -1,4 +1,4 @@
-"""Генератор языковых карточек — ввод слов → definition + example + audio + image."""
+"""Language card generator — input words -> definition + example + audio + image."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ankiforge.openrouter.client import OpenRouterClient
 
 # ---------------------------------------------------------------------------
-# Промпты
+# Prompts
 # ---------------------------------------------------------------------------
 
 _DEFAULT_SYSTEM_PROMPT = (
@@ -60,47 +60,46 @@ _DETAILED_IMAGE_PROMPT_TEMPLATE = (
     "Mood: evocative, memorable. No text, no watermarks, no logos."
 )
 
-# Параметры WAV для генерации тишины (должны совпадать с TTS output)
+# WAV parameters for silence generation (must match TTS output)
 _WAV_SAMPLE_RATE = 24000
 _WAV_CHANNELS = 1
 _WAV_BITS_PER_SAMPLE = 16
 
 
 # ---------------------------------------------------------------------------
-# Утилиты
+# Utilities
 # ---------------------------------------------------------------------------
 
 
 def _bold_word(text: str, word: str) -> str:
-    """Оборачивает все вхождения слова (и его форм) в <b>...</b>.
+    """Wrap all occurrences of a word (and its forms) in <b>...</b>.
 
-    Case-insensitive, сохраняет оригинальный регистр найденного слова.
-    Ищет слово как отдельное слово (word boundaries), а также формы с типичными
-    окончаниями (s, es, ed, ing, er, est, ly, tion, ment).
+    Case-insensitive, preserves original case. Matches the word as a whole word
+    (word boundaries), including forms with common suffixes (s, es, ed, ing, er, est, ly, tion, ment).
 
     Args:
-        text: Текст для обработки.
-        word: Слово для выделения.
+        text: Text to process.
+        word: Word to highlight.
 
     Returns:
-        Текст с <b>...</b> вокруг слова.
+        Text with <b>...</b> around the word.
     """
     if not text or not word:
         return text
-    # Экранируем спецсимволы regex, ищем слово + опционально типичные окончания
+    # Escape regex special chars, match word + optional common suffixes
     escaped = re.escape(word.strip())
     pattern = rf"\b({escaped}(?:s|es|ed|ing|er|est|ly|tion|ment|ness)?)\b"
     return re.sub(pattern, r"<b>\1</b>", text, flags=re.IGNORECASE)
 
 
 def _generate_silence_wav(seconds: float = 2.0) -> bytes:
-    """Генерирует WAV файл с тишиной заданной длительности.
+    """Generate a WAV file with silence of given duration.
 
     Args:
-        seconds: Длительность тишины в секундах.
+        seconds: Silence duration in seconds.
 
     Returns:
-        WAV байты.
+        WAV bytes.
     """
     import struct
 
@@ -131,7 +130,7 @@ def _generate_silence_wav(seconds: float = 2.0) -> bytes:
 
 
 class LanguageGenerator:
-    """Генератор Language-карточек из списка слов."""
+    """Language card generator from a list of words."""
 
     def __init__(
         self,
@@ -157,17 +156,17 @@ class LanguageGenerator:
         request: CardRequest,
         progress_callback: Callable[[GenerationProgress], None],
     ) -> list[GeneratedCard]:
-        """Генерирует Language-карточки из списка слов.
+        """Generate Language cards from a list of words.
 
         Args:
-            request: Запрос со словами в input_text (по одному на строку или через запятую).
-            progress_callback: Callback для отслеживания прогресса.
+            request: Request with words in input_text (one per line or comma-separated).
+            progress_callback: Callback for tracking progress.
 
         Returns:
-            Список сгенерированных карточек.
+            List of generated cards.
 
         Raises:
-            ValueError: Если не найдено слов во входном тексте.
+            ValueError: If no words found in input text.
         """
         from ankiforge.models import LanguageOptions
 
@@ -178,7 +177,7 @@ class LanguageGenerator:
         total_cost = 0.0
 
         for word in words:
-            # 1 запрос: definition + example + IPA (JSON)
+            # 1 request: definition + example + IPA (JSON)
             prompt = self._build_prompt(word, request.language, request.custom_prompt, opts.include_transcription)
             response = self._client.generate_text(prompt, self._text_model, temperature=0.3)
             total_cost += self._cost_from_usage(self._text_pricing)
@@ -187,25 +186,25 @@ class LanguageGenerator:
             if not opts.include_transcription:
                 transcription = None
 
-            # Аудио: произношение слова
+            # Audio: word pronunciation
             audio_data: bytes | None = None
             if opts.include_audio_word:
                 audio_data = self._client.generate_audio(word, self._audio_model, voice=opts.voice)
                 total_cost += self._cost_from_usage(self._audio_pricing)
 
-            # Аудио: озвучка определения
+            # Audio: definition narration
             audio_definition: bytes | None = None
             if opts.include_audio_definition and definition:
                 audio_definition = self._client.generate_audio(definition, self._audio_model, voice=opts.voice)
                 total_cost += self._cost_from_usage(self._audio_pricing)
 
-            # Аудио: озвучка примера (чистое, без тишины)
+            # Audio: example narration (clean, no silence)
             audio_example: bytes | None = None
             if opts.include_audio_example and example:
                 audio_example = self._client.generate_audio(example, self._audio_model, voice=opts.voice)
                 total_cost += self._cost_from_usage(self._audio_pricing)
 
-            # Изображение: сцена из example
+            # Image: scene from example
             image_data: bytes | None = None
             if opts.include_photo and example:
                 template = _DETAILED_IMAGE_PROMPT_TEMPLATE if opts.detailed_image else _IMAGE_PROMPT_TEMPLATE
@@ -214,7 +213,7 @@ class LanguageGenerator:
                 image_data = self._client.generate_image(image_prompt, self._image_model, size=size)
                 total_cost += self._cost_from_usage(self._image_pricing, is_image=True)
 
-            # Тишина между definition и example аудио (отдельный файл)
+            # Silence between definition and example audio (separate file)
             audio_silence: bytes | None = None
             if audio_definition and audio_example:
                 audio_silence = _generate_silence_wav(seconds=2.0)
@@ -244,16 +243,16 @@ class LanguageGenerator:
         return cards
 
     def _cost_from_usage(self, pricing: ModelPricingCache | None, *, is_image: bool = False) -> float:
-        """Рассчитывает стоимость последнего вызова.
+        """Calculate cost of the last API call.
 
-        Приоритет: usage.cost из OpenRouter (точная) → ручной расчёт из токенов.
+        Priority: usage.cost from OpenRouter (exact) -> manual calculation from tokens.
         """
-        # OpenRouter возвращает реальную стоимость — используем если есть
+        # OpenRouter returns real cost — use if available
         api_cost = self._client.last_cost
         if api_cost > 0:
             return api_cost
 
-        # Fallback: ручной расчёт из токенов × pricing
+        # Fallback: manual calculation from tokens x pricing
         if pricing is None:
             return 0.0
         prompt_tokens, completion_tokens = self._client.last_usage
@@ -263,7 +262,7 @@ class LanguageGenerator:
         return 0.0
 
     def _build_prompt(self, word: str, language: str, custom_prompt: str | None, include_ipa: bool = True) -> str:
-        """Строит промпт для генерации definition + example + IPA (один JSON-запрос)."""
+        """Build prompt for generating definition + example + IPA (single JSON request)."""
         if custom_prompt:
             return f"{custom_prompt}\n\nWord: {word}\nLanguage: {language}"
 
@@ -271,7 +270,7 @@ class LanguageGenerator:
         return f"{_DEFAULT_SYSTEM_PROMPT}\n{ipa_note}\n\nLanguage: {language}\nWord: {word}"
 
     def _parse_words(self, text: str) -> list[str]:
-        """Парсит слова из текста (по строкам или через запятую)."""
+        """Parse words from text (by lines or comma-separated)."""
         lines = [line.strip() for line in text.splitlines() if line.strip()]
 
         words = [w.strip() for w in lines[0].split(",") if w.strip()] if len(lines) == 1 and "," in lines[0] else lines
@@ -282,20 +281,20 @@ class LanguageGenerator:
         return words
 
     def _parse_json_response(self, response: str) -> tuple[str, str, str | None]:
-        """Парсит JSON ответ AI в definition, example и IPA.
+        """Parse AI JSON response into definition, example, and IPA.
 
         Args:
-            response: Текст ответа от AI.
+            response: AI response text.
 
         Returns:
-            Кортеж (definition, example, ipa).
+            Tuple (definition, example, ipa).
         """
         if not response.strip():
             return ("", "", None)
 
-        # Пробуем JSON
+        # Try JSON
         try:
-            # Убираем markdown fences если есть
+            # Strip markdown fences if present
             cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip())
             data = json.loads(cleaned)
             if isinstance(data, dict):
@@ -307,18 +306,18 @@ class LanguageGenerator:
         except (json.JSONDecodeError, ValueError):
             pass
 
-        # Fallback: старый формат DEFINITION: / EXAMPLE:
+        # Fallback: legacy DEFINITION: / EXAMPLE: format
         return self._parse_text_response(response)
 
     def _parse_text_response(self, response: str) -> tuple[str, str, str | None]:
-        """Fallback парсер для текстового формата."""
+        """Fallback parser for text format."""
         def_match = re.search(r"DEFINITION:\s*(.+?)(?=\nEXAMPLE:|\Z)", response, re.DOTALL)
         ex_match = re.search(r"EXAMPLE:\s*(.+)", response, re.DOTALL)
 
         if def_match and ex_match:
             return (def_match.group(1).strip(), ex_match.group(1).strip(), None)
 
-        # Fallback: первое предложение = definition, остальное = example
+        # Fallback: first sentence = definition, rest = example
         sentences = re.split(r"(?<=\.)\s+", response.strip(), maxsplit=1)
         if len(sentences) >= 2:
             return (sentences[0].strip(), sentences[1].strip(), None)

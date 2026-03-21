@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Сборка .ankiaddon файла для публикации на AnkiWeb и GitHub Releases."""
+"""Build .ankiaddon file for publishing on AnkiWeb and GitHub Releases."""
 
 from __future__ import annotations
 
@@ -23,45 +23,45 @@ EXCLUDE_PATTERNS: set[str] = {
 
 
 def get_version() -> str:
-    """Читает __version__ из __init__.py."""
+    """Read __version__ from __init__.py."""
     init = SRC_PKG / "__init__.py"
     match = re.search(r'__version__\s*=\s*"(.+?)"', init.read_text())
     if not match:
-        raise RuntimeError("Не удалось найти __version__ в __init__.py")
+        raise RuntimeError("Could not find __version__ in __init__.py")
     return match.group(1)
 
 
 def should_exclude(path: Path) -> bool:
-    """Проверяет, нужно ли исключить файл из архива."""
+    """Check if a file should be excluded from the archive."""
     return any(part in EXCLUDE_PATTERNS for part in path.parts) or any(
         path.name.endswith(ext) for ext in (".pyc", ".pyo")
     )
 
 
 def build() -> Path:
-    """Собирает .ankiaddon архив и возвращает путь к файлу."""
+    """Build .ankiaddon archive and return the file path."""
     version = get_version()
     DIST.mkdir(exist_ok=True)
 
-    output = DIST / f"AnkiForgeX_v{version}.ankiaddon"
+    output = DIST / f"AnkiForge_v{version}.ankiaddon"
 
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zf:
-        # manifest.json — в корень архива
+        # manifest.json — to archive root
         manifest = SRC_PKG / "manifest.json"
         zf.write(manifest, "manifest.json")
 
-        # config.json — в корень архива (Anki ожидает рядом с manifest)
+        # config.json — to archive root (Anki expects it next to manifest)
         config = SRC_PKG / "config.json"
         if config.exists():
             zf.write(config, "config.json")
 
-        # Пакет ankiforge/ — весь код
+        # ankiforge/ package — all code
         for file in sorted(SRC_PKG.rglob("*")):
             if not file.is_file():
                 continue
             if should_exclude(file):
                 continue
-            # manifest.json и config.json уже добавлены в корень
+            # manifest.json and config.json already added to root
             if file.name in ("manifest.json", "config.json"):
                 continue
 
@@ -70,10 +70,10 @@ def build() -> Path:
 
         names = zf.namelist()
 
-    print(f"Собрано: {output}")
-    print(f"  Версия: {version}")
-    print(f"  Файлов: {len(names)}")
-    print(f"  Размер: {output.stat().st_size / 1024:.1f} KB")
+    print(f"Built: {output}")
+    print(f"  Version: {version}")
+    print(f"  Files: {len(names)}")
+    print(f"  Size: {output.stat().st_size / 1024:.1f} KB")
 
     return output
 

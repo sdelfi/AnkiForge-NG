@@ -1,4 +1,4 @@
-"""Тесты для ankiforge.ui.generate_dialog — утилиты генерации карточек (TASK-020)."""
+"""Tests for ankiforge.ui.generate_dialog — card generation utilities (TASK-020)."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import pytest
 from ankiforge.models import GeneratedCard, GenerationMode
 
 # ---------------------------------------------------------------------------
-# Тесты _create_generator
+# Tests for _create_generator
 # ---------------------------------------------------------------------------
 
 
 class TestCreateGenerator:
-    """Проверяет фабрику генераторов по режиму."""
+    """Verifies the generator factory by mode."""
 
     def _make_client(self) -> MagicMock:
         return MagicMock()
@@ -90,7 +90,7 @@ class TestCreateGenerator:
         assert isinstance(gen, AudioGenerator)
 
     def test_material_mode_with_include_images(self) -> None:
-        """MaterialGenerator получает image_model когда include_images=True."""
+        """MaterialGenerator receives image_model when include_images=True."""
         from ankiforge.ui.generate_dialog import _create_generator
 
         gen = _create_generator(
@@ -104,7 +104,7 @@ class TestCreateGenerator:
         assert gen._image_model == "img-model"
 
     def test_material_mode_without_include_images(self) -> None:
-        """MaterialGenerator НЕ получает image_model когда include_images=False."""
+        """MaterialGenerator does NOT receive image_model when include_images=False."""
         from ankiforge.ui.generate_dialog import _create_generator
 
         gen = _create_generator(
@@ -119,12 +119,12 @@ class TestCreateGenerator:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _build_card_request
+# Tests for _build_card_request
 # ---------------------------------------------------------------------------
 
 
 class TestBuildCardRequest:
-    """Проверяет сборку CardRequest из состояния формы."""
+    """Verifies CardRequest construction from form state."""
 
     def test_basic_request(self) -> None:
         from ankiforge.ui.generate_dialog import _build_card_request
@@ -200,12 +200,12 @@ class TestBuildCardRequest:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _save_cards_to_deck
+# Tests for _save_cards_to_deck
 # ---------------------------------------------------------------------------
 
 
 class TestSaveCardsToDeck:
-    """Проверяет сохранение карточек через anki_bridge."""
+    """Verifies card saving via anki_bridge."""
 
     def _make_qa_card(self, word: str = "Q1", answer: str = "A1") -> GeneratedCard:
         return GeneratedCard(word=word, answer=answer, note_type="AnkiForge QA")
@@ -276,7 +276,7 @@ class TestSaveCardsToDeck:
         card = self._make_language_card()
         _save_cards_to_deck([card], "Lang Deck", create_new=False)
 
-        # Должно быть 2 вызова save_media (audio + image)
+        # Should be 2 save_media calls (audio + image)
         assert mock_media.call_count == 2
         mock_add.assert_called_once()
         fields = mock_add.call_args[0][2]
@@ -297,7 +297,7 @@ class TestSaveCardsToDeck:
         card = self._make_language_card(with_extras=True)
         _save_cards_to_deck([card], "Lang Deck", create_new=False)
 
-        # 5 save_media: audio + image + audio_def + silence + audio_ex
+        # 5 save_media calls: audio + image + audio_def + silence + audio_ex
         assert mock_media.call_count == 5
         fields = mock_add.call_args[0][2]
         assert fields["Transcription"] == "/həˈloʊ/"
@@ -379,12 +379,12 @@ class TestSaveCardsToDeck:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _get_input_placeholder
+# Tests for _get_input_placeholder
 # ---------------------------------------------------------------------------
 
 
 class TestGetDeckNameFromCombo:
-    """Проверяет определение имени колоды из editable combo."""
+    """Verifies deck name resolution from editable combo."""
 
     def test_existing_deck_returns_not_new(self) -> None:
         from ankiforge.ui.generate_dialog import _get_deck_name_from_combo
@@ -419,7 +419,7 @@ class TestGetDeckNameFromCombo:
 
 
 class TestGetInputPlaceholder:
-    """Проверяет подсказки для поля ввода."""
+    """Verifies input field placeholders."""
 
     def test_all_modes_have_placeholders(self) -> None:
         from ankiforge.ui.generate_dialog import _get_input_placeholder
@@ -442,12 +442,12 @@ class TestGetInputPlaceholder:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _should_show_images_checkbox
+# Tests for _should_show_images_checkbox
 # ---------------------------------------------------------------------------
 
 
 class TestShouldShowImagesCheckbox:
-    """Проверяет когда показывать чекбокс картинок."""
+    """Verifies when to show the images checkbox."""
 
     def test_material_mode_shows_checkbox(self) -> None:
         from ankiforge.ui.generate_dialog import _should_show_images_checkbox
@@ -463,12 +463,12 @@ class TestShouldShowImagesCheckbox:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _should_show_custom_prompt (TASK-022)
+# Tests for _should_show_custom_prompt (TASK-022)
 # ---------------------------------------------------------------------------
 
 
 class TestShouldShowCustomPrompt:
-    """Проверяет когда показывать поле кастомного промпта."""
+    """Verifies when to show the custom prompt field."""
 
     def test_all_modes_show_custom_prompt(self) -> None:
         from ankiforge.ui.generate_dialog import _should_show_custom_prompt
@@ -478,12 +478,12 @@ class TestShouldShowCustomPrompt:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _get_default_custom_prompt (TASK-022)
+# Tests for _get_default_custom_prompt (TASK-022)
 # ---------------------------------------------------------------------------
 
 
 class TestGetDefaultCustomPrompt:
-    """Проверяет дефолтный промпт для всех режимов."""
+    """Verifies the default prompt for all modes."""
 
     def test_returns_non_empty_string_for_language(self) -> None:
         from ankiforge.ui.generate_dialog import _get_default_custom_prompt
@@ -521,12 +521,12 @@ class TestGetDefaultCustomPrompt:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _build_card_request с custom_prompt (TASK-022)
+# Tests for _build_card_request with custom_prompt (TASK-022)
 # ---------------------------------------------------------------------------
 
 
 class TestBuildCardRequestCustomPrompt:
-    """Проверяет передачу custom_prompt через _build_card_request."""
+    """Verifies custom_prompt passing through _build_card_request."""
 
     def test_custom_prompt_passed_to_request(self) -> None:
         from ankiforge.ui.generate_dialog import _build_card_request
@@ -571,12 +571,12 @@ class TestBuildCardRequestCustomPrompt:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _estimate_cost_from_config
+# Tests for _estimate_cost_from_config
 # ---------------------------------------------------------------------------
 
 
 class TestEstimateCostFromConfig:
-    """Проверяет расчёт стоимости из кэшированного pricing."""
+    """Verifies cost calculation from cached pricing."""
 
     def _make_config(self) -> object:
         from ankiforge.models import AddonConfig, ModelPricingCache
@@ -639,7 +639,7 @@ class TestEstimateCostFromConfig:
         assert req.custom_prompt == "My prompt"
 
     def test_language_options_no_audio_reduces_cost(self) -> None:
-        """Отключение всех аудио должно снизить стоимость."""
+        """Disabling all audio should reduce cost."""
         from ankiforge.models import LanguageOptions
         from ankiforge.ui.generate_dialog import _estimate_cost_from_config
 
@@ -655,7 +655,7 @@ class TestEstimateCostFromConfig:
         assert cost_no_audio < cost_all
 
     def test_language_options_no_photo_reduces_cost(self) -> None:
-        """Отключение фото должно снизить стоимость."""
+        """Disabling photo should reduce cost."""
         from ankiforge.models import LanguageOptions
         from ankiforge.ui.generate_dialog import _estimate_cost_from_config
 
@@ -668,7 +668,7 @@ class TestEstimateCostFromConfig:
         assert cost_no_photo < cost_all
 
     def test_language_single_text_call_same_cost_with_or_without_ipa(self) -> None:
-        """Транскрипция включена в единый JSON-запрос — стоимость text одинакова."""
+        """Transcription is included in the single JSON request — text cost is the same."""
         from ankiforge.models import LanguageOptions
         from ankiforge.ui.generate_dialog import _estimate_cost_from_config
 
@@ -678,12 +678,12 @@ class TestEstimateCostFromConfig:
             config, GenerationMode.LANGUAGE, 5, LanguageOptions(include_transcription=False)
         )
         assert cost_all is not None and cost_no_ipa is not None
-        # Text cost одинаков — IPA в том же запросе
-        # Разница может быть только если другие опции разные
+        # Text cost is the same — IPA is in the same request
+        # Difference can only arise if other options differ
         assert cost_all == cost_no_ipa
 
     def test_image_size_affects_cost_estimate(self) -> None:
-        """Размер изображения влияет на оценку стоимости."""
+        """Image size affects cost estimate."""
         from ankiforge.models import LanguageOptions
         from ankiforge.ui.generate_dialog import _estimate_cost_from_config
 
@@ -696,12 +696,12 @@ class TestEstimateCostFromConfig:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _build_card_request с language_options
+# Tests for _build_card_request with language_options
 # ---------------------------------------------------------------------------
 
 
 class TestBuildCardRequestLanguageOptions:
-    """Проверяет передачу language_options через _build_card_request."""
+    """Verifies language_options passing through _build_card_request."""
 
     def test_language_options_passed_to_request(self) -> None:
         from ankiforge.models import LanguageOptions
@@ -736,12 +736,12 @@ class TestBuildCardRequestLanguageOptions:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _build_card_request с material_options, voice, image_size
+# Tests for _build_card_request with material_options, voice, image_size
 # ---------------------------------------------------------------------------
 
 
 class TestBuildCardRequestNewOptions:
-    """Проверяет передачу material_options, voice, image_size через _build_card_request."""
+    """Verifies material_options, voice, image_size passing through _build_card_request."""
 
     def test_material_options_passed(self) -> None:
         from ankiforge.models import MaterialOptions
@@ -806,12 +806,12 @@ class TestBuildCardRequestNewOptions:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _create_generator с новыми параметрами
+# Tests for _create_generator with new parameters
 # ---------------------------------------------------------------------------
 
 
 class TestBuildCardRequestAnswerDetail:
-    """Проверяет передачу answer_detail через material_options."""
+    """Verifies answer_detail passing through material_options."""
 
     def test_answer_detail_passed_in_material_options(self) -> None:
         from ankiforge.models import AnswerDetail, MaterialOptions
@@ -849,7 +849,7 @@ class TestBuildCardRequestAnswerDetail:
 
 
 class TestCreateGeneratorNewParams:
-    """Проверяет передачу image_size и voice в генераторы."""
+    """Verifies image_size and voice passing to generators."""
 
     def _make_client(self) -> MagicMock:
         return MagicMock()
@@ -896,12 +896,12 @@ class TestCreateGeneratorNewParams:
 
 
 # ---------------------------------------------------------------------------
-# Тесты _markdown_to_html
+# Tests for _markdown_to_html
 # ---------------------------------------------------------------------------
 
 
 class TestMarkdownToHtml:
-    """Конвертация markdown code blocks в HTML для Anki."""
+    """Markdown code blocks conversion to HTML for Anki."""
 
     def test_code_block_to_pre(self) -> None:
         from ankiforge.ui.generate_dialog import _markdown_to_html
@@ -941,7 +941,7 @@ class TestMarkdownToHtml:
         result = _markdown_to_html(text)
         assert "&lt;" in result
         assert "&gt;" in result
-        assert "<10" not in result  # не должно стать HTML тегом
+        assert "<10" not in result  # should not become an HTML tag
 
     def test_newlines_to_br_outside_code(self) -> None:
         from ankiforge.ui.generate_dialog import _markdown_to_html
@@ -955,7 +955,7 @@ class TestMarkdownToHtml:
 
         text = "```python\nline1\nline2\n```"
         result = _markdown_to_html(text)
-        # Внутри <pre> не должно быть <br>
+        # Inside <pre> there should be no <br>
         assert "<br>" not in result
 
     def test_plain_text_no_code(self) -> None:

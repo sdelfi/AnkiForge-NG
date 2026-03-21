@@ -1,4 +1,4 @@
-"""Модели данных для OpenRouter API."""
+"""Data models for the OpenRouter API."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from enum import Enum
 
 
 class Modality(Enum):
-    """Модальности моделей OpenRouter."""
+    """OpenRouter model modalities."""
 
     TEXT = "text"
     IMAGE = "image"
@@ -16,7 +16,7 @@ class Modality(Enum):
 
 @dataclass
 class ModelPricing:
-    """Ценообразование модели (стоимость за токен/запрос)."""
+    """Model pricing (cost per token/request)."""
 
     prompt: float = 0.0
     completion: float = 0.0
@@ -26,7 +26,7 @@ class ModelPricing:
 
 @dataclass
 class Model:
-    """Модель OpenRouter."""
+    """OpenRouter model."""
 
     id: str
     name: str

@@ -9,16 +9,16 @@ def get_dialog_size(
     min_w: int = 480,
     min_h: int = 400,
 ) -> tuple[int, int]:
-    """Вычисляет размер диалога как процент от доступного экрана.
+    """Calculate dialog size as a percentage of available screen.
 
     Args:
-        width_pct: Доля ширины экрана (0.0–1.0).
-        height_pct: Доля высоты экрана (0.0–1.0).
-        min_w: Минимальная ширина.
-        min_h: Минимальная высота.
+        width_pct: Screen width fraction (0.0–1.0).
+        height_pct: Screen height fraction (0.0–1.0).
+        min_w: Minimum width.
+        min_h: Minimum height.
 
     Returns:
-        (width, height) в пикселях.
+        (width, height) in pixels.
     """
     from aqt.qt import QApplication  # type: ignore[import-not-found]
 
@@ -33,13 +33,13 @@ def get_dialog_size(
 
 
 def wrap_in_scroll_area(content_widget: object) -> object:
-    """Оборачивает виджет в QScrollArea с вертикальной прокруткой.
+    """Wrap widget in QScrollArea with vertical scrolling.
 
     Args:
-        content_widget: QWidget с содержимым диалога.
+        content_widget: QWidget with dialog content.
 
     Returns:
-        QScrollArea, готовый для добавления в layout диалога.
+        QScrollArea ready to be added to dialog layout.
     """
     from aqt.qt import QScrollArea, Qt
 

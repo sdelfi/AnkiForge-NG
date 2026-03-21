@@ -4,7 +4,7 @@ __version__ = "0.1.0"
 
 
 def _register_addon() -> None:
-    """Регистрация add-on в Anki (вызывается только внутри Anki runtime)."""
+    """Register the add-on in Anki (called only inside Anki runtime)."""
     try:
         from aqt import gui_hooks, mw  # type: ignore[import-not-found]
     except ImportError:
@@ -14,7 +14,7 @@ def _register_addon() -> None:
         return
 
     def on_main_window_init() -> None:
-        """Инициализация после загрузки главного окна."""
+        """Initialize after main window is loaded."""
         from ankiforge.config.dialog import setup_settings_menu
         from ankiforge.ui.main_button import setup_deck_browser_button, setup_main_button
 

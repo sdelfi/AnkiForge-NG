@@ -1,4 +1,4 @@
-"""Data models для AnkiForge."""
+"""Data models for AnkiForge."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from enum import Enum
 
 
 class GenerationMode(Enum):
-    """Режимы генерации карточек."""
+    """Card generation modes."""
 
     LANGUAGE = "language"
     MATERIAL = "material"
@@ -17,7 +17,7 @@ class GenerationMode(Enum):
 
 
 class AnswerDetail(Enum):
-    """Уровень детальности ответа."""
+    """Answer detail level."""
 
     SHORT = "short"
     MEDIUM = "medium"
@@ -26,7 +26,7 @@ class AnswerDetail(Enum):
 
 @dataclass
 class MaterialOptions:
-    """Опции генерации карточек из материала."""
+    """Options for generating cards from material."""
 
     max_cards_per_paragraph: int = 3
     include_images: bool = False
@@ -36,7 +36,7 @@ class MaterialOptions:
 
 @dataclass
 class CardRequest:
-    """Запрос на генерацию карточек."""
+    """Card generation request."""
 
     mode: GenerationMode
     input_text: str
@@ -53,7 +53,7 @@ class CardRequest:
 
 @dataclass
 class LanguageOptions:
-    """Опции генерации языковых карточек."""
+    """Language card generation options."""
 
     include_photo: bool = True
     include_audio_word: bool = True
@@ -67,7 +67,7 @@ class LanguageOptions:
 
 @dataclass
 class GeneratedCard:
-    """Сгенерированная карточка."""
+    """Generated card."""
 
     word: str
     note_type: str
@@ -84,7 +84,7 @@ class GeneratedCard:
 
 @dataclass
 class GenerationProgress:
-    """Прогресс генерации карточек."""
+    """Card generation progress."""
 
     total_cards: int
     completed_cards: int = 0
@@ -95,7 +95,7 @@ class GenerationProgress:
 
 @dataclass
 class ModelPricingCache:
-    """Кэш pricing для одной модели."""
+    """Pricing cache for a single model."""
 
     prompt: float = 0.0
     completion: float = 0.0
@@ -105,7 +105,7 @@ class ModelPricingCache:
 
 @dataclass
 class AddonConfig:
-    """Конфигурация add-on."""
+    """Add-on configuration."""
 
     api_key: str = ""
     text_model: str = ""

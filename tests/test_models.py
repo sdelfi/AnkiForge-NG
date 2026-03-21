@@ -1,4 +1,4 @@
-"""Тесты для data models AnkiForge."""
+"""Tests for AnkiForge data models."""
 
 from ankiforge.models import (
     AddonConfig,

@@ -1,4 +1,4 @@
-"""Генератор карточек по материалам — map-reduce: абзацы → факты → QA карточки."""
+"""Material card generator — map-reduce: paragraphs -> facts -> QA cards."""
 
 from __future__ import annotations
 
@@ -126,7 +126,7 @@ _ANSWER_INSTRUCTIONS: dict[str, str] = {
 
 
 class MaterialGenerator:
-    """Генератор QA-карточек из учебного материала (map-reduce)."""
+    """QA card generator from study material (map-reduce)."""
 
     def __init__(
         self,
@@ -145,17 +145,17 @@ class MaterialGenerator:
         request: CardRequest,
         progress_callback: Callable[[GenerationProgress], None],
     ) -> list[GeneratedCard]:
-        """Генерирует QA-карточки из учебного материала.
+        """Generate QA cards from study material.
 
         Args:
-            request: Запрос с текстом материала в input_text.
-            progress_callback: Callback для отслеживания прогресса.
+            request: Request with material text in input_text.
+            progress_callback: Callback for tracking progress.
 
         Returns:
-            Список сгенерированных карточек.
+            List of generated cards.
 
         Raises:
-            ValueError: Если не найдено текста во входных данных.
+            ValueError: If no text found in input.
         """
         text = request.input_text.strip()
         if not text:
@@ -180,7 +180,7 @@ class MaterialGenerator:
             detail = request.material_options.answer_detail
         answer_instructions = _ANSWER_INSTRUCTIONS[detail.value]
 
-        # Если пользователь задал custom_prompt — single-pass режим
+        # If user set custom_prompt — single-pass mode
         if request.custom_prompt:
             return self._generate_single_pass(
                 text, request.custom_prompt, note_type, use_images, image_size, progress_callback
@@ -188,7 +188,7 @@ class MaterialGenerator:
 
         paragraphs = self._prepare_paragraphs(text)
 
-        # Фаза 1 — Extract + Generate: извлечение фактов и генерация QA
+        # Phase 1 — Extract + Generate: extract facts and generate QA
         all_pairs: list[tuple[str, str]] = []
         progress = GenerationProgress(total_cards=len(paragraphs) * max_cards)
 
@@ -210,12 +210,12 @@ class MaterialGenerator:
             pairs = self._parse_qa_pairs(response)
             all_pairs.extend(pairs)
 
-            # Обновляем completed и total после каждого абзаца
+            # Update completed and total after each paragraph
             progress.completed_cards = len(all_pairs)
             progress.total_cards = len(all_pairs) + (len(paragraphs) - i - 1) * max_cards
             progress_callback(progress)
 
-        # Фаза 2 — создание карточек (+ картинки если включены)
+        # Phase 2 — create cards (+ images if enabled)
         progress.total_cards = len(all_pairs)
         cards: list[GeneratedCard] = []
 
@@ -255,7 +255,7 @@ class MaterialGenerator:
         image_size: str,
         progress_callback: Callable[[GenerationProgress], None],
     ) -> list[GeneratedCard]:
-        """Single-pass генерация с кастомным промптом."""
+        """Single-pass generation with custom prompt."""
         prompt = f"{custom_prompt}\n\nMaterial:\n{text}"
         response = self._client.generate_text(prompt, self._text_model)
         text_cost = self._client.last_cost
@@ -295,25 +295,25 @@ class MaterialGenerator:
         return cards
 
     def _prepare_paragraphs(self, text: str) -> list[str]:
-        """Разбивает текст на абзацы с фильтрацией, группировкой по топикам и объединением.
+        """Split text into paragraphs with filtering, topic grouping, and merging.
 
-        Логика:
-        1. Разбить по \\n\\n, отфильтровать мусор (<10 символов)
-        2. Группировка по топикам: заголовок-вопрос + контент = одна секция
-        3. Жадное объединение мелких секций до _MERGE_TARGET
-        4. Разбиение слишком длинных чанков
+        Logic:
+        1. Split by \\n\\n, filter junk (<10 chars)
+        2. Group by topic: heading + content = one section
+        3. Greedy merge of small sections up to _MERGE_TARGET
+        4. Split overly long chunks
 
         Args:
-            text: Исходный текст.
+            text: Source text.
 
         Returns:
-            Список абзацев оптимального размера.
+            List of optimally-sized paragraphs.
         """
         raw = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
         if not raw:
             return [text]
 
-        # Разделяем абзацы где первая строка — заголовок (отделён одним \n от контента)
+        # Split paragraphs where first line is a heading (separated by single \n from content)
         expanded: list[str] = []
         for p in raw:
             lines = p.split("\n", 1)
@@ -323,22 +323,22 @@ class MaterialGenerator:
             else:
                 expanded.append(p)
 
-        # Фильтр мусора (слишком короткие абзацы)
+        # Filter junk (too short paragraphs)
         filtered = [p for p in expanded if len(p) >= _MIN_PARAGRAPH_LEN]
         if not filtered:
             return [text] if len(text) >= _MIN_PARAGRAPH_LEN else raw[:1] if raw else [text]
 
-        # Помечаем heading-индексы: standalone headings + headings от expanded
+        # Mark heading indices: standalone headings + headings from expanded
         heading_indices: set[int] = set()
         for i, p in enumerate(filtered):
             if self._is_topic_heading(p):
                 heading_indices.add(i)
 
-        # Группировка по топикам: heading начинает новую секцию
+        # Group by topic: heading starts a new section
         sections = self._group_by_topic_indexed(filtered, heading_indices)
 
-        # Жадное объединение соседних секций до _MERGE_TARGET символов
-        # Если обнаружены topic headings — не мержим между секциями (каждая самодостаточна)
+        # Greedy merge of adjacent sections up to _MERGE_TARGET chars
+        # If topic headings detected — don't merge across sections (each is self-contained)
         if heading_indices:
             merged = sections
         else:
@@ -352,7 +352,7 @@ class MaterialGenerator:
                     buf = s
             merged.append(buf)
 
-        # Разбиение длинных
+        # Split long ones
         result: list[str] = []
         for p in merged:
             if len(p) <= _MAX_PARAGRAPH_LEN:
@@ -364,11 +364,10 @@ class MaterialGenerator:
 
     @staticmethod
     def _is_topic_heading(text: str) -> bool:
-        """Определяет, является ли абзац заголовком топика.
+        """Determine if a paragraph is a topic heading.
 
-        Заголовок: однострочный текст 20-150 символов, не заканчивается точкой/запятой,
-        начинается с заглавной буквы, не выглядит как код.
-        Например: 'Что такое генератор', 'В чем отличие X от Y'.
+        Heading: single-line text 20-150 chars, doesn't end with period/comma,
+        starts with uppercase letter, doesn't look like code.
         """
         stripped = text.strip()
         if not stripped or len(stripped) < 15 or len(stripped) > _MAX_HEADING_LEN:
@@ -377,25 +376,25 @@ class MaterialGenerator:
             return False
         if stripped[-1] in ".;,":
             return False
-        # Код-строки не являются заголовками
+        # Code lines are not headings
         if stripped.startswith(("class ", "def ", "import ", "from ", "return ", "@")):
             return False
-        # Должен начинаться с буквы (заглавной)
+        # Must start with an uppercase letter
         return stripped[0].isupper()
 
     @staticmethod
     def _group_by_topic_indexed(paragraphs: list[str], heading_indices: set[int]) -> list[str]:
-        """Группирует абзацы по топикам используя известные индексы заголовков.
+        """Group paragraphs by topic using known heading indices.
 
-        Каждый heading начинает новую секцию. Content-абзацы присоединяются
-        к текущей секции. Если заголовков нет — возвращает абзацы как есть.
+        Each heading starts a new section. Content paragraphs are appended
+        to the current section. If no headings — returns paragraphs as-is.
 
         Args:
-            paragraphs: Список абзацев.
-            heading_indices: Индексы абзацев-заголовков.
+            paragraphs: List of paragraphs.
+            heading_indices: Indices of heading paragraphs.
 
         Returns:
-            Список секций (каждая = заголовок + контент через \\n\\n).
+            List of sections (each = heading + content joined by \\n\\n).
         """
         if len(paragraphs) <= 1 or not heading_indices:
             return paragraphs
@@ -416,7 +415,7 @@ class MaterialGenerator:
         return sections
 
     def _split_long_paragraph(self, text: str) -> list[str]:
-        """Разбивает длинный абзац по предложениям на подабзацы ~2000 символов."""
+        """Split a long paragraph by sentences into sub-paragraphs of ~2000 chars."""
         sentences = re.split(r"(?<=[.!?])\s+", text)
         chunks: list[str] = []
         current: list[str] = []
@@ -437,13 +436,13 @@ class MaterialGenerator:
         return chunks
 
     def _parse_qa_pairs(self, response: str) -> list[tuple[str, str]]:
-        """Парсит ответ AI в список пар (question, answer).
+        """Parse AI response into a list of (question, answer) pairs.
 
         Args:
-            response: Текст ответа от AI.
+            response: AI response text.
 
         Returns:
-            Список кортежей (question, answer).
+            List of (question, answer) tuples.
         """
         if not response.strip():
             return []

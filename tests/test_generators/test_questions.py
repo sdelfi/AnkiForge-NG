@@ -1,4 +1,4 @@
-"""Тесты для QuestionsGenerator."""
+"""Tests for QuestionsGenerator."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from ankiforge.openrouter.client import OpenRouterClient
 
 @pytest.fixture
 def mock_client() -> MagicMock:
-    """Мок OpenRouterClient."""
+    """Mock OpenRouterClient."""
     client = MagicMock(spec=OpenRouterClient)
     client.generate_text.return_value = "Ответ от AI"
     client.last_cost = 0.0
@@ -40,7 +40,7 @@ def base_request() -> CardRequest:
 
 
 # ---------------------------------------------------------------------------
-# Парсинг вопросов
+# Question parsing
 # ---------------------------------------------------------------------------
 
 
@@ -71,7 +71,7 @@ class TestParseQuestions:
 
 
 # ---------------------------------------------------------------------------
-# Генерация карточек
+# Card generation
 # ---------------------------------------------------------------------------
 
 
@@ -118,7 +118,7 @@ class TestGenerate:
         generator.generate(base_request, MagicMock())
 
         assert mock_client.generate_text.call_count == 2
-        # Проверяем что вопрос попадает в промпт
+        # Verify that the question is included in the prompt
         first_prompt = mock_client.generate_text.call_args_list[0][0][0]
         assert "Что такое Python?" in first_prompt
 
@@ -166,7 +166,7 @@ class TestGenerate:
 
 
 # ---------------------------------------------------------------------------
-# Отмена генерации
+# Generation cancellation
 # ---------------------------------------------------------------------------
 
 
@@ -176,7 +176,7 @@ class TestCancellation:
         generator: QuestionsGenerator,
         mock_client: MagicMock,
     ) -> None:
-        """Генерация останавливается если progress.is_cancelled = True."""
+        """Generation stops if progress.is_cancelled = True."""
         request = CardRequest(
             mode=GenerationMode.QUESTIONS,
             input_text="Вопрос 1\nВопрос 2\nВопрос 3",
@@ -194,13 +194,13 @@ class TestCancellation:
 
         cards = generator.generate(request, cancel_on_second)
 
-        # Только 1 карточка — после первого callback генерация отменена
+        # Only 1 card — generation cancelled after first callback
         assert len(cards) == 1
         assert mock_client.generate_text.call_count == 1
 
 
 # ---------------------------------------------------------------------------
-# Промпт
+# Prompt
 # ---------------------------------------------------------------------------
 
 
@@ -237,7 +237,7 @@ class TestPrompt:
         generator.generate(request, MagicMock())
 
         prompt = mock_client.generate_text.call_args[0][0]
-        # Промпт должен инструктировать AI давать компактный, но информативный ответ
+        # Prompt should instruct AI to give a compact but informative answer
         assert any(word in prompt.lower() for word in ["concise", "compact", "кратк", "компактн"])
 
 
@@ -251,7 +251,7 @@ class TestCostTracking:
         self,
         mock_client: MagicMock,
     ) -> None:
-        """current_cost накапливается из client.last_cost после каждого вызова."""
+        """current_cost accumulates from client.last_cost after each call."""
         mock_client.generate_text.return_value = "Ответ"
         mock_client.last_cost = 0.01
         generator = QuestionsGenerator(client=mock_client, model="m1")
@@ -266,7 +266,7 @@ class TestCostTracking:
             costs.append(progress.current_cost)
 
         generator.generate(request, capture)
-        # 3 вызова generate_text × $0.01 = $0.03
+        # 3 generate_text calls x $0.01 = $0.03
         assert len(costs) == 3
         assert costs[-1] == pytest.approx(0.03, abs=0.001)
 
@@ -277,7 +277,7 @@ class TestTemperature:
         generator: QuestionsGenerator,
         mock_client: MagicMock,
     ) -> None:
-        """generate_text вызывается с temperature=0.3."""
+        """generate_text is called with temperature=0.3."""
         request = CardRequest(
             mode=GenerationMode.QUESTIONS,
             input_text="Что такое Python?",

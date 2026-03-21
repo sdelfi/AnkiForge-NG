@@ -1,4 +1,4 @@
-"""Диалог настроек AnkiForge — API-ключ, выбор моделей, язык."""
+"""AnkiForge settings dialog — API key, model selection, language."""
 
 from __future__ import annotations
 
@@ -17,32 +17,32 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Утилиты (тестируемые без Qt)
+# Utilities (testable without Qt)
 # ---------------------------------------------------------------------------
 
 
 def _filter_models_by_modality(models: list[Model], modality: Modality) -> list[Model]:
-    """Фильтрует модели по модальности.
+    """Filter models by modality.
 
     Args:
-        models: Список всех моделей.
-        modality: Нужная модальность.
+        models: List of all models.
+        modality: Required modality.
 
     Returns:
-        Отфильтрованный список моделей.
+        Filtered list of models.
     """
     return [m for m in models if modality in m.modalities]
 
 
 def _extract_pricing(model_id: str, models: list[Model]) -> ModelPricingCache | None:
-    """Извлекает pricing модели по ID.
+    """Extract model pricing by ID.
 
     Args:
-        model_id: ID модели.
-        models: Список загруженных моделей.
+        model_id: Model ID.
+        models: List of loaded models.
 
     Returns:
-        ModelPricingCache или None если модель не найдена.
+        ModelPricingCache or None if model not found.
     """
     from ankiforge.models import ModelPricingCache
 
@@ -68,18 +68,18 @@ def _build_config_from_dialog_state(
     language: str,
     models: list[Model] | None = None,
 ) -> AddonConfig:
-    """Собирает AddonConfig из значений диалога.
+    """Build AddonConfig from dialog values.
 
     Args:
-        api_key: API-ключ.
-        text_model_id: ID текстовой модели.
-        image_model_id: ID image модели.
-        audio_model_id: ID audio модели.
-        language: Язык карточек.
-        models: Загруженные модели для извлечения pricing.
+        api_key: API key.
+        text_model_id: Text model ID.
+        image_model_id: Image model ID.
+        audio_model_id: Audio model ID.
+        language: Card language.
+        models: Loaded models for pricing extraction.
 
     Returns:
-        Сконфигурированный AddonConfig.
+        Configured AddonConfig.
     """
     all_models = models or []
     return AddonConfig(
@@ -95,10 +95,10 @@ def _build_config_from_dialog_state(
 
 
 def _make_searchable_combo() -> QComboBox:
-    """Создаёт QComboBox с поиском по подстроке.
+    """Create a QComboBox with substring search.
 
     Returns:
-        Editable QComboBox с QCompleter (MatchContains, CaseInsensitive).
+        Editable QComboBox with QCompleter (MatchContains, CaseInsensitive).
     """
     from aqt.qt import QComboBox, QCompleter, Qt
 
@@ -117,12 +117,12 @@ def _make_searchable_combo() -> QComboBox:
 
 
 def _populate_model_combo(combo: QComboBox, models: list[Model], current_id: str) -> None:
-    """Заполняет QComboBox моделями.
+    """Populate QComboBox with models.
 
     Args:
-        combo: QComboBox для заполнения.
-        models: Список моделей.
-        current_id: ID текущей выбранной модели.
+        combo: QComboBox to populate.
+        models: List of models.
+        current_id: ID of the currently selected model.
     """
     combo.clear()
     combo.addItem("— not selected —", "")
@@ -131,52 +131,52 @@ def _populate_model_combo(combo: QComboBox, models: list[Model], current_id: str
     for i, model in enumerate(models):
         combo.addItem(f"{model.name} ({model.id})", model.id)
         if model.id == current_id:
-            selected_index = i + 1  # +1 за пустой элемент
+            selected_index = i + 1  # +1 for the empty element
 
     if selected_index > 0:
         combo.setCurrentIndex(selected_index)
 
-    # Обновляем модель completer'а если combo editable
+    # Update completer model if combo is editable
     if combo.isEditable() and combo.completer() is not None:
         combo.completer().setModel(combo.model())
 
 
 def _get_selected_model_id(combo: QComboBox) -> str:
-    """Получает ID выбранной модели из QComboBox.
+    """Get the ID of the selected model from QComboBox.
 
-    Если пользователь выбрал из списка — возвращает data (ID).
-    Если ввёл кастомный текст — извлекает ID из текста.
+    If the user selected from the list — returns data (ID).
+    If the user typed custom text — extracts ID from text.
 
     Args:
-        combo: QComboBox с моделями.
+        combo: QComboBox with models.
 
     Returns:
-        ID модели или пустая строка.
+        Model ID or empty string.
     """
     data = combo.currentData()
     if data is not None:
         return str(data)
 
-    # Кастомный ввод — пользователь набрал текст руками
+    # Custom input — user typed text manually
     text = str(combo.currentText()).strip()
     if not text or text == "— not selected —":
         return ""
 
-    # Текст может быть в формате "ModelName (provider/model-id)" — извлекаем ID из скобок
+    # Text may be in format "ModelName (provider/model-id)" — extract ID from parentheses
     if "(" in text and text.endswith(")"):
         return text[text.rfind("(") + 1 : -1].strip()
 
-    # Или просто ID модели напрямую (например "google/gemini-2.5-flash")
+    # Or just the model ID directly (e.g. "google/gemini-2.5-flash")
     return text
 
 
 def _set_status(label: QLabel, text: str, *, ok: bool) -> None:
-    """Устанавливает текст и цвет статусного лейбла.
+    """Set text and color for a status label.
 
     Args:
-        label: QLabel для статуса.
-        text: Текст сообщения.
-        ok: True — зелёный, False — красный.
+        label: QLabel for status.
+        text: Message text.
+        ok: True — green, False — red.
     """
     label.setText(text)
     color = "#4caf50" if ok else "#f44336"
@@ -184,13 +184,13 @@ def _set_status(label: QLabel, text: str, *, ok: bool) -> None:
 
 
 def _validate_api_key_action(api_key: str) -> tuple[bool, str | None]:
-    """Валидация API-ключа (обёртка для тестирования).
+    """Validate API key (wrapper for testing).
 
     Args:
-        api_key: API-ключ для проверки.
+        api_key: API key to validate.
 
     Returns:
-        Кортеж (is_valid, error_message).
+        Tuple (is_valid, error_message).
     """
     if not api_key or not api_key.strip():
         return False, "API key is empty"
@@ -203,17 +203,17 @@ def _validate_api_key_action(api_key: str) -> tuple[bool, str | None]:
 
 
 class SettingsDialog:
-    """Диалог настроек AnkiForge.
+    """AnkiForge settings dialog.
 
-    Поля: API-ключ, текстовая модель, image модель, audio модель, язык.
-    Модели загружаются с OpenRouter и фильтруются по модальности.
+    Fields: API key, text model, image model, audio model, language.
+    Models are loaded from OpenRouter and filtered by modality.
     """
 
     def __init__(self, mw: AnkiQt) -> None:
-        """Инициализация диалога настроек.
+        """Initialize settings dialog.
 
         Args:
-            mw: Главное окно Anki.
+            mw: Anki main window.
         """
         from aqt.qt import (
             QDialog,
@@ -238,26 +238,26 @@ class SettingsDialog:
         self._dialog.setMinimumWidth(560)
         self._dialog.setStyleSheet(DIALOG_QSS)
 
-        # Основной layout диалога: scroll + кнопки внизу
+        # Main dialog layout: scroll + buttons at the bottom
         dialog_layout = QVBoxLayout()
         dialog_layout.setContentsMargins(0, 0, 0, 0)
         dialog_layout.setSpacing(0)
         self._dialog.setLayout(dialog_layout)
 
-        # Содержимое внутри scroll area
+        # Content inside scroll area
         content = _QWidget()
         layout = QVBoxLayout()
         layout.setSpacing(16)
         layout.setContentsMargins(14, 14, 14, 6)
         content.setLayout(layout)
 
-        # === Секция 1: Подключение к OpenRouter ===
+        # === Section 1: OpenRouter Connection ===
         api_group = QGroupBox("OpenRouter Connection")
         api_layout = QFormLayout()
         api_layout.setSpacing(8)
         api_group.setLayout(api_layout)
 
-        # API-ключ
+        # API key
         api_key_row = QHBoxLayout()
         self._api_key_input = QLineEdit()
         self._api_key_input.setPlaceholderText("sk-or-...")
@@ -277,7 +277,7 @@ class SettingsDialog:
 
         layout.addWidget(api_group)
 
-        # === Секция 2: Модели ===
+        # === Section 2: Models ===
         models_group = QGroupBox("Models")
         models_layout = QFormLayout()
         models_layout.setSpacing(8)
@@ -294,7 +294,7 @@ class SettingsDialog:
 
         layout.addWidget(models_group)
 
-        # === Секция 3: Баланс ===
+        # === Section 3: Balance ===
         balance_group = QGroupBox("Balance")
         balance_layout = QFormLayout()
         balance_layout.setSpacing(4)
@@ -315,12 +315,12 @@ class SettingsDialog:
         balance_group.setLayout(balance_layout)
         layout.addWidget(balance_group)
 
-        # Scroll area с содержимым
+        # Scroll area with content
         from ankiforge.ui.styles import get_dialog_size, wrap_in_scroll_area
 
         dialog_layout.addWidget(wrap_in_scroll_area(content))
 
-        # === OK / Cancel (вне scroll, всегда видны) ===
+        # === OK / Cancel (outside scroll, always visible) ===
         btn_layout = QHBoxLayout()
         btn_layout.setContentsMargins(14, 6, 14, 14)
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -329,30 +329,30 @@ class SettingsDialog:
         btn_layout.addWidget(button_box)
         dialog_layout.addLayout(btn_layout)
 
-        # Масштабируем под экран
+        # Scale to screen size
         w, h = get_dialog_size(width_pct=0.35, height_pct=0.55, min_w=560, min_h=400)
         self._dialog.resize(w, h)
 
-        # Загружаем текущие настройки
+        # Load current settings
         self._load_current_config()
 
     def _load_current_config(self) -> None:
-        """Загружает текущую конфигурацию в поля диалога."""
+        """Load current configuration into dialog fields."""
         config = get_config()
         self._api_key_input.setText(config.api_key)
 
-        # Показываем кэшированные значения
+        # Show cached values
         if config.cached_usage is not None:
             self._usage_label.setText(f"${config.cached_usage:.2f}")
         if config.cached_balance is not None:
             self._remaining_label.setText(f"${config.cached_balance:.2f}")
 
-        # Модели — пытаемся загрузить если есть API-ключ
+        # Models — try to load if API key is present
         if config.api_key:
             self._load_models_silent(config)
 
     def _load_models_silent(self, config: AddonConfig) -> None:
-        """Загружает модели без показа ошибок (для инициализации)."""
+        """Load models without showing errors (for initialization)."""
         try:
             from ankiforge.openrouter.client import OpenRouterClient
 
@@ -365,7 +365,7 @@ class SettingsDialog:
             pass
 
     def _populate_combos(self, config: AddonConfig) -> None:
-        """Заполняет combobox'ы моделями."""
+        """Populate comboboxes with models."""
         text_models = _filter_models_by_modality(self._models, Modality.TEXT)
         image_models = _filter_models_by_modality(self._models, Modality.IMAGE)
         audio_models = _filter_models_by_modality(self._models, Modality.AUDIO)
@@ -375,7 +375,7 @@ class SettingsDialog:
         _populate_model_combo(self._audio_model_combo, audio_models, config.audio_model)
 
     def _on_connect(self) -> None:
-        """Обработчик кнопки Подключиться — валидация ключа + загрузка моделей."""
+        """Connect button handler — validate key + load models."""
         api_key = self._api_key_input.text().strip()
         is_valid, error = _validate_api_key_action(api_key)
 
@@ -383,7 +383,7 @@ class SettingsDialog:
             _set_status(self._api_status_label, f"Error: {error}", ok=False)
             return
 
-        # Ключ валиден — сразу грузим модели
+        # Key is valid — load models immediately
         try:
             from ankiforge.openrouter.client import OpenRouterClient
 
@@ -400,7 +400,7 @@ class SettingsDialog:
             _set_status(self._api_status_label, f"Failed to load models: {e}", ok=False)
 
     def _on_refresh_balance(self) -> None:
-        """Запрашивает баланс из OpenRouter API и обновляет UI + кэш."""
+        """Fetch balance from OpenRouter API and update UI + cache."""
         api_key = self._api_key_input.text().strip()
         if not api_key:
             self._usage_label.setText("no API key")
@@ -422,7 +422,7 @@ class SettingsDialog:
             else:
                 self._remaining_label.setText(f"${remaining:.2f}")
 
-            # Кэшируем в конфиг
+            # Cache in config
             config = get_config()
             config.cached_usage = usage
             config.cached_balance = remaining
@@ -432,10 +432,10 @@ class SettingsDialog:
             self._remaining_label.setText("—")
 
     def _validate_custom_models(self) -> str | None:
-        """Проверяет кастомные модели (введённые вручную) через API.
+        """Validate custom models (entered manually) via API.
 
         Returns:
-            Сообщение об ошибке или None если всё ок.
+            Error message or None if everything is ok.
         """
         combos = {
             "Text": self._text_model_combo,
@@ -449,7 +449,7 @@ class SettingsDialog:
             if not model_id or model_id in known_ids:
                 continue
 
-            # Кастомная модель — проверяем существование через API
+            # Custom model — verify existence via API
             api_key = self._api_key_input.text().strip()
             if not api_key:
                 return f"{label} model '{model_id}' not found in the list, and no API key provided"
@@ -458,13 +458,13 @@ class SettingsDialog:
                 from ankiforge.openrouter.client import OpenRouterClient
 
                 client = OpenRouterClient(api_key=api_key)
-                # Загружаем актуальный список моделей (без кэша)
+                # Load up-to-date model list (no cache)
                 client._models_cache = None  # noqa: SLF001
                 all_models = client.fetch_models()
                 found = next((m for m in all_models if m.id == model_id), None)
                 if found is None:
                     return f"{label} model '{model_id}' not found on OpenRouter"
-                # Добавляем найденную модель в локальный кэш
+                # Add found model to local cache
                 if found not in self._models:
                     self._models.append(found)
             except Exception as e:  # noqa: BLE001
@@ -473,8 +473,8 @@ class SettingsDialog:
         return None
 
     def _on_accept(self) -> None:
-        """Обработчик кнопки OK — валидация кастомных моделей + сохранение."""
-        # Валидация кастомных моделей
+        """OK button handler — validate custom models + save."""
+        # Validate custom models
         error = self._validate_custom_models()
         if error:
             from aqt.qt import QMessageBox
@@ -494,7 +494,7 @@ class SettingsDialog:
         self._dialog.accept()
 
     def run(self) -> int:
-        """Показывает диалог модально.
+        """Show dialog modally.
 
         Returns:
             QDialog.DialogCode (Accepted / Rejected).
@@ -503,21 +503,21 @@ class SettingsDialog:
 
 
 # ---------------------------------------------------------------------------
-# Регистрация в меню
+# Menu registration
 # ---------------------------------------------------------------------------
 
 
 def setup_settings_menu(mw: AnkiQt) -> None:
-    """Добавляет пункт 'AnkiForge Settings' в меню Tools.
+    """Add 'AnkiForge Settings' item to the Tools menu.
 
     Args:
-        mw: Главное окно Anki.
+        mw: Anki main window.
     """
     action = mw.form.menuTools.addAction("AnkiForge Settings...")
     action.triggered.connect(lambda: _open_settings(mw))
 
 
 def _open_settings(mw: AnkiQt) -> None:
-    """Открывает диалог настроек."""
+    """Open the settings dialog."""
     dialog = SettingsDialog(mw)
     dialog.run()

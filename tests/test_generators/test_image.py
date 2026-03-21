@@ -1,4 +1,4 @@
-"""Тесты для ImageGenerator."""
+"""Tests for ImageGenerator."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from ankiforge.openrouter.client import OpenRouterClient
 
 @pytest.fixture
 def mock_client() -> MagicMock:
-    """Мок OpenRouterClient."""
+    """Mock OpenRouterClient."""
     client = MagicMock(spec=OpenRouterClient)
     client.generate_text.return_value = "Ответ от AI на вопрос"
     client.generate_image.return_value = b"\x89PNG_fake_image_data"
@@ -45,7 +45,7 @@ def base_request() -> CardRequest:
 
 
 # ---------------------------------------------------------------------------
-# Парсинг вопросов
+# Question parsing
 # ---------------------------------------------------------------------------
 
 
@@ -72,7 +72,7 @@ class TestParseQuestions:
 
 
 # ---------------------------------------------------------------------------
-# Генерация карточек
+# Card generation
 # ---------------------------------------------------------------------------
 
 
@@ -198,7 +198,7 @@ class TestProgress:
 
 
 # ---------------------------------------------------------------------------
-# Отмена
+# Cancellation
 # ---------------------------------------------------------------------------
 
 
@@ -225,7 +225,7 @@ class TestCancellation:
 
 
 # ---------------------------------------------------------------------------
-# Валидация входных данных
+# Input validation
 # ---------------------------------------------------------------------------
 
 
@@ -290,7 +290,7 @@ class TestCostTracking:
         self,
         mock_client: MagicMock,
     ) -> None:
-        """current_cost накапливается из client.last_cost после каждого вызова."""
+        """current_cost accumulates from client.last_cost after each call."""
         mock_client.last_cost = 0.02
         generator = ImageGenerator(client=mock_client, text_model="m1", image_model="m2")
         request = CardRequest(
@@ -304,7 +304,7 @@ class TestCostTracking:
             costs.append(progress.current_cost)
 
         generator.generate(request, capture)
-        # 2 карточки × (generate_text + generate_image) × $0.02 = $0.08
+        # 2 cards x (generate_text + generate_image) x $0.02 = $0.08
         assert len(costs) == 2
         assert costs[-1] == pytest.approx(0.08, abs=0.001)
 
@@ -315,7 +315,7 @@ class TestTemperature:
         generator: ImageGenerator,
         mock_client: MagicMock,
     ) -> None:
-        """generate_text вызывается с temperature=0.3."""
+        """generate_text is called with temperature=0.3."""
         request = CardRequest(
             mode=GenerationMode.IMAGE,
             input_text="Что такое ДНК?",

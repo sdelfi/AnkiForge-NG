@@ -1,4 +1,4 @@
-"""Управление колодами Anki, медиа-файлами и заметками."""
+"""Anki deck, media, and note management."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ if TYPE_CHECKING:
 
 
 def _get_mw() -> AnkiQt:
-    """Получает главное окно Anki (mw).
+    """Get the Anki main window (mw).
 
     Raises:
-        RuntimeError: Если Anki runtime недоступен.
+        RuntimeError: If Anki runtime is not available.
     """
     try:
         from aqt import mw  # type: ignore[import-not-found]
@@ -29,23 +29,23 @@ def _get_mw() -> AnkiQt:
 
 
 def get_decks() -> list[str]:
-    """Возвращает список имён существующих колод.
+    """Return a list of existing deck names.
 
     Returns:
-        Список строк — имена колод.
+        List of deck name strings.
     """
     mw = _get_mw()
     return [d.name for d in mw.col.decks.all_names_and_ids()]
 
 
 def create_deck(name: str) -> None:
-    """Создаёт новую колоду, если она ещё не существует.
+    """Create a new deck if it doesn't already exist.
 
     Args:
-        name: Имя колоды.
+        name: Deck name.
 
     Raises:
-        ValueError: Если имя пустое.
+        ValueError: If name is empty.
     """
     if not name.strip():
         msg = "Deck name cannot be empty"
@@ -60,17 +60,17 @@ def create_deck(name: str) -> None:
 
 
 def save_media(filename: str, data: bytes) -> str:
-    """Сохраняет файл в медиа-коллекцию Anki с уникальным именем.
+    """Save a file to Anki's media collection with a unique name.
 
     Args:
-        filename: Оригинальное имя файла (например, 'hello.mp3').
-        data: Байты файла.
+        filename: Original filename (e.g. 'hello.mp3').
+        data: File bytes.
 
     Returns:
-        Уникальное имя файла (с UUID-префиксом).
+        Unique filename (with UUID prefix).
 
     Raises:
-        ValueError: Если данные пустые.
+        ValueError: If data is empty.
     """
     if not data:
         msg = "File data cannot be empty"
@@ -84,15 +84,15 @@ def save_media(filename: str, data: bytes) -> str:
 
 
 def add_note(deck_name: str, note_type: str, fields: dict[str, str]) -> None:
-    """Добавляет заметку в указанную колоду.
+    """Add a note to the specified deck.
 
     Args:
-        deck_name: Имя колоды.
-        note_type: Имя типа заметки (note type / model).
-        fields: Словарь {имя_поля: значение}.
+        deck_name: Deck name.
+        note_type: Note type name (model).
+        fields: Dict of {field_name: value}.
 
     Raises:
-        ValueError: Если note type не найден.
+        ValueError: If note type is not found.
     """
     mw = _get_mw()
 

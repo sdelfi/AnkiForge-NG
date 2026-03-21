@@ -1,4 +1,4 @@
-"""Прогресс-бар, оценка стоимости и отмена генерации (QThread)."""
+"""Progress bar, cost estimation, and generation cancellation (QThread)."""
 
 from __future__ import annotations
 
@@ -24,20 +24,20 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Утилиты (тестируемые без Qt)
+# Utilities (testable without Qt)
 # ---------------------------------------------------------------------------
 
 
 def _count_input_items(input_text: str, mode: GenerationMode, *, max_cards_per_paragraph: int = 3) -> int:
-    """Подсчитывает количество элементов ввода по режиму.
+    """Count input items by mode.
 
     Args:
-        input_text: Текст ввода.
-        mode: Режим генерации.
-        max_cards_per_paragraph: Макс. cards на абзац (для MATERIAL).
+        input_text: Input text.
+        mode: Generation mode.
+        max_cards_per_paragraph: Max cards per paragraph (for MATERIAL).
 
     Returns:
-        Ожидаемое количество cards.
+        Expected number of cards.
     """
 
     text = input_text.strip()
@@ -51,25 +51,25 @@ def _count_input_items(input_text: str, mode: GenerationMode, *, max_cards_per_p
         return len(items)
 
     if mode == GenerationMode.MATERIAL:
-        # Используем реальную логику разбиения из MaterialGenerator
+        # Use real splitting logic from MaterialGenerator
         from ankiforge.generators.material import MaterialGenerator
 
         gen = MaterialGenerator.__new__(MaterialGenerator)
         chunks = gen._prepare_paragraphs(text)
         return len(chunks) * max_cards_per_paragraph
 
-    # QUESTIONS, IMAGE, AUDIO — по строкам
+    # QUESTIONS, IMAGE, AUDIO — by lines
     return len([line for line in text.splitlines() if line.strip()])
 
 
 def _format_cost(cost: float) -> str:
-    """Форматирует стоимость для отображения.
+    """Format cost for display.
 
     Args:
-        cost: Стоимость в долларах.
+        cost: Cost in USD.
 
     Returns:
-        Форматированная строка.
+        Formatted string.
     """
     if cost < 0.001:
         return "< $0.001"
@@ -77,14 +77,14 @@ def _format_cost(cost: float) -> str:
 
 
 def _find_model_by_id(model_id: str, models: list[Model]) -> Model | None:
-    """Находит модель по ID в списке.
+    """Find model by ID in list.
 
     Args:
-        model_id: ID модели.
-        models: Список моделей.
+        model_id: Model ID.
+        models: List of models.
 
     Returns:
-        Model или None.
+        Model or None.
     """
     if not model_id:
         return None
@@ -104,19 +104,19 @@ def _estimate_and_format_cost(
     image_model_id: str,
     audio_model_id: str,
 ) -> str:
-    """Рассчитывает и форматирует оценку стоимости.
+    """Calculate and format cost estimate.
 
     Args:
-        client: OpenRouter клиент.
-        mode: Режим генерации.
-        card_count: Количество cards.
-        models: Список доступных моделей.
-        text_model_id: ID текстовой модели.
-        image_model_id: ID image модели.
-        audio_model_id: ID audio модели.
+        client: OpenRouter client.
+        mode: Generation mode.
+        card_count: Number of cards.
+        models: List of available models.
+        text_model_id: Text model ID.
+        image_model_id: Image model ID.
+        audio_model_id: Audio model ID.
 
     Returns:
-        Форматированная строка стоимости.
+        Formatted cost string.
     """
     text_model = _find_model_by_id(text_model_id, models)
     image_model = _find_model_by_id(image_model_id, models)
@@ -133,14 +133,14 @@ def _estimate_and_format_cost(
 
 
 # ---------------------------------------------------------------------------
-# GenerationWorker — QThread для генерации в фоне
+# GenerationWorker — QThread for background generation
 # ---------------------------------------------------------------------------
 
 
 class GenerationWorker:
-    """QThread-обёртка для фоновой генерации cards.
+    """QThread wrapper for background card generation.
 
-    Эмитит сигналы: progress_updated, finished, error.
+    Emits signals: progress_updated, finished, error.
     """
 
     def __init__(
@@ -184,37 +184,37 @@ class GenerationWorker:
 
     @property
     def worker(self) -> object:
-        """Возвращает внутренний QThread."""
+        """Return the internal QThread."""
         return self._worker
 
     def start(self) -> None:
-        """Запускает генерацию в фоновом потоке."""
+        """Start generation in background thread."""
         self._worker.start()
 
     def cancel(self) -> None:
-        """Отменяет генерацию."""
+        """Cancel generation."""
         self._worker.cancel()
 
     def connect_progress(self, callback: Callable[[GenerationProgress], None]) -> None:
-        """Подключает callback к сигналу прогресса."""
+        """Connect callback to progress signal."""
         self._worker.progress_updated.connect(callback)
 
     def connect_finished(self, callback: Callable[[list[GeneratedCard]], None]) -> None:
-        """Подключает callback к сигналу завершения."""
+        """Connect callback to finished signal."""
         self._worker.finished_ok.connect(callback)
 
     def connect_error(self, callback: Callable[[str], None]) -> None:
-        """Подключает callback к сигналу ошибки."""
+        """Connect callback to error signal."""
         self._worker.error_occurred.connect(callback)
 
 
 # ---------------------------------------------------------------------------
-# ProgressWidget — виджет прогресса (только бар + Cancel)
+# ProgressWidget — progress widget (bar + Cancel only)
 # ---------------------------------------------------------------------------
 
 
 class ProgressWidget:
-    """Виджет прогресса генерации: прогресс-бар и кнопка отмены."""
+    """Generation progress widget: progress bar and cancel button."""
 
     def __init__(self, parent: object) -> None:
         from aqt.qt import (
@@ -237,14 +237,14 @@ class ProgressWidget:
 
     @property
     def widget(self) -> object:
-        """Возвращает Qt-виджет для вставки в layout."""
+        """Return Qt widget for layout insertion."""
         return self._widget
 
     def show(self, total_cards: int) -> None:
-        """Показывает виджет с начальными данными.
+        """Show widget with initial data.
 
         Args:
-            total_cards: Ожидаемое количество cards.
+            total_cards: Expected number of cards.
         """
         self._progress_bar.setMaximum(total_cards)
         self._progress_bar.setValue(0)
@@ -252,10 +252,10 @@ class ProgressWidget:
         self._widget.setVisible(True)
 
     def update_progress(self, progress: GenerationProgress) -> None:
-        """Обновляет прогресс-бар.
+        """Update progress bar.
 
         Args:
-            progress: Текущий прогресс.
+            progress: Current progress.
         """
         if progress.total_cards != self._progress_bar.maximum():
             self._progress_bar.setMaximum(progress.total_cards)
@@ -263,8 +263,8 @@ class ProgressWidget:
         self._progress_bar.setFormat(f"{progress.completed_cards}/{progress.total_cards} cards")
 
     def finish(self) -> None:
-        """Финализирует виджет."""
+        """Finalize widget."""
 
     def hide(self) -> None:
-        """Скрывает виджет."""
+        """Hide widget."""
         self._widget.setVisible(False)

@@ -1,4 +1,4 @@
-"""Тесты для OpenRouterClient — текстовая, image и audio генерация."""
+"""Tests for OpenRouterClient — text, image and audio generation."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ MODEL = "openai/gpt-4o"
 
 
 def _make_response(status_code: int = 200, json_data: dict[str, object] | None = None) -> MagicMock:
-    """Создаёт мок requests.Response."""
+    """Create a mock requests.Response."""
     resp = MagicMock(spec=requests.Response)
     resp.status_code = status_code
     resp.json.return_value = json_data or {}
@@ -87,7 +87,7 @@ class TestGenerateText:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_temperature_included_when_set(self, mock_post: MagicMock) -> None:
-        """temperature передаётся в body когда явно указан."""
+        """temperature is included in body when explicitly set."""
         mock_post.return_value = _success_response()
         client = OpenRouterClient(api_key=API_KEY)
         client.generate_text("Hello", model=MODEL, temperature=0.3)
@@ -96,7 +96,7 @@ class TestGenerateText:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_temperature_not_included_when_none(self, mock_post: MagicMock) -> None:
-        """temperature не включается в body когда None (дефолт)."""
+        """temperature is not included in body when None (default)."""
         mock_post.return_value = _success_response()
         client = OpenRouterClient(api_key=API_KEY)
         client.generate_text("Hello", model=MODEL)
@@ -105,7 +105,7 @@ class TestGenerateText:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_temperature_zero_included(self, mock_post: MagicMock) -> None:
-        """temperature=0.0 передаётся (не путается с None)."""
+        """temperature=0.0 is passed through (not confused with None)."""
         mock_post.return_value = _success_response()
         client = OpenRouterClient(api_key=API_KEY)
         client.generate_text("Hello", model=MODEL, temperature=0.0)
@@ -163,11 +163,11 @@ class TestErrorHandling:
 
 
 class TestErrorHandlingExtended:
-    """Дополнительные тесты обработки ошибок."""
+    """Additional error handling tests."""
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_unexpected_status_code(self, mock_post: MagicMock) -> None:
-        """Неожиданный HTTP-статус (не 200/401/429/5xx) бросает OpenRouterError."""
+        """Unexpected HTTP status (not 200/401/429/5xx) raises OpenRouterError."""
         mock_post.return_value = _make_response(403, {"error": {"message": "Forbidden"}})
         client = OpenRouterClient(api_key=API_KEY, max_retries=0)
         with pytest.raises(OpenRouterError, match="Status 403: Forbidden"):
@@ -175,7 +175,7 @@ class TestErrorHandlingExtended:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_text_null_content(self, mock_post: MagicMock) -> None:
-        """API вернул choices с content=None бросает OpenRouterError."""
+        """API returned choices with content=None raises OpenRouterError."""
         mock_post.return_value = _make_response(200, {"choices": [{"message": {"role": "assistant", "content": None}}]})
         client = OpenRouterClient(api_key=API_KEY)
         with pytest.raises(OpenRouterError, match="empty content"):
@@ -183,7 +183,7 @@ class TestErrorHandlingExtended:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_text_missing_content_key(self, mock_post: MagicMock) -> None:
-        """API вернул message без content бросает OpenRouterError."""
+        """API returned message without content raises OpenRouterError."""
         mock_post.return_value = _make_response(200, {"choices": [{"message": {"role": "assistant"}}]})
         client = OpenRouterClient(api_key=API_KEY)
         with pytest.raises(OpenRouterError, match="empty content"):
@@ -191,7 +191,7 @@ class TestErrorHandlingExtended:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_no_retry_on_429(self, mock_post: MagicMock) -> None:
-        """429 не ретраится — сразу бросает RateLimitError."""
+        """429 is not retried — raises RateLimitError immediately."""
         mock_post.return_value = _make_response(429, {"error": {"message": "Rate limit"}})
         client = OpenRouterClient(api_key=API_KEY, max_retries=3)
         with pytest.raises(OpenRouterRateLimitError):
@@ -240,7 +240,7 @@ class TestRetry:
         client = OpenRouterClient(api_key=API_KEY, max_retries=3)
         with pytest.raises(OpenRouterAuthError):
             client.generate_text("test", model=MODEL)
-        assert mock_post.call_count == 1  # Нет retry
+        assert mock_post.call_count == 1  # No retry
 
     @patch("ankiforge.openrouter.client.time.sleep")
     @patch("ankiforge.openrouter.client.requests.post")
@@ -253,12 +253,12 @@ class TestRetry:
         client = OpenRouterClient(api_key=API_KEY, max_retries=3, base_delay=1.0)
         client.generate_text("test", model=MODEL)
         delays = [call.args[0] for call in mock_sleep.call_args_list]
-        assert delays[0] < delays[1]  # экспоненциальный рост
+        assert delays[0] < delays[1]  # exponential growth
 
     @patch("ankiforge.openrouter.client.time.sleep")
     @patch("ankiforge.openrouter.client.requests.post")
     def test_retry_on_connection_error(self, mock_post: MagicMock, mock_sleep: MagicMock) -> None:
-        """ConnectionError ретраится и восстанавливается."""
+        """ConnectionError is retried and recovers."""
         mock_post.side_effect = [
             requests.ConnectionError("Connection refused"),
             _success_response("recovered"),
@@ -272,7 +272,7 @@ class TestRetry:
     @patch("ankiforge.openrouter.client.time.sleep")
     @patch("ankiforge.openrouter.client.requests.post")
     def test_connection_error_retry_exhausted(self, mock_post: MagicMock, mock_sleep: MagicMock) -> None:
-        """ConnectionError после исчерпания retries бросает OpenRouterError."""
+        """ConnectionError after exhausting retries raises OpenRouterError."""
         mock_post.side_effect = requests.ConnectionError("Connection refused")
         client = OpenRouterClient(api_key=API_KEY, max_retries=2)
         with pytest.raises(OpenRouterError, match="Connection error"):
@@ -287,7 +287,7 @@ _FAKE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 
 
 def _image_success_response(image_b64: str | None = None) -> MagicMock:
-    """Мок ответа OpenRouter с изображением."""
+    """Mock OpenRouter response with an image."""
     b64 = image_b64 or base64.b64encode(_FAKE_PNG).decode()
     return _make_response(
         200,
@@ -308,11 +308,11 @@ def _image_success_response(image_b64: str | None = None) -> MagicMock:
 
 
 def _audio_stream_response(audio_b64: str | None = None) -> MagicMock:
-    """Мок streaming ответа OpenRouter с аудио-чанками."""
+    """Mock streaming OpenRouter response with audio chunks."""
     import json
 
     b64 = audio_b64 or base64.b64encode(b"fake-wav-data").decode()
-    # Разбиваем base64 на два чанка для реалистичности
+    # Split base64 into two chunks for realism
     mid = len(b64) // 2
     chunk1 = b64[:mid]
     chunk2 = b64[mid:]
@@ -349,7 +349,7 @@ class TestGenerateImage:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_image_config_sent_with_size(self, mock_post: MagicMock) -> None:
-        """image_config передаётся с image_size при указании size."""
+        """image_config is sent with image_size when size is specified."""
         mock_post.return_value = _image_success_response()
         client = OpenRouterClient(api_key=API_KEY)
         client.generate_image("test", model=IMAGE_MODEL, size="0.5K")
@@ -358,7 +358,7 @@ class TestGenerateImage:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_image_config_not_sent_for_auto(self, mock_post: MagicMock) -> None:
-        """image_config не передаётся при size='auto' или None."""
+        """image_config is not sent when size='auto' or None."""
         mock_post.return_value = _image_success_response()
         client = OpenRouterClient(api_key=API_KEY)
         client.generate_image("test", model=IMAGE_MODEL, size="auto")
@@ -367,7 +367,7 @@ class TestGenerateImage:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_image_multimodal_content_format(self, mock_post: MagicMock) -> None:
-        """Парсит изображение из multimodal content[] формата ответа."""
+        """Parses image from multimodal content[] response format."""
         b64 = base64.b64encode(_FAKE_PNG).decode()
         resp = _make_response(
             200,
@@ -395,7 +395,7 @@ class TestGenerateImage:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_image_retry_without_image_config(self, mock_post: MagicMock) -> None:
-        """При ошибке с image_config — retry без него."""
+        """On error with image_config — retries without it."""
         mock_post.side_effect = [
             _make_response(400, {"error": {"message": "INVALID_ARGUMENT"}}),
             _image_success_response(),
@@ -403,9 +403,9 @@ class TestGenerateImage:
         client = OpenRouterClient(api_key=API_KEY, max_retries=0)
         result = client.generate_image("test", model=IMAGE_MODEL, size="0.5K")
         assert isinstance(result, bytes)
-        # 2 вызова: первый с image_config (failed), второй без
+        # 2 calls: first with image_config (failed), second without
         assert mock_post.call_count == 2
-        # После retry body уже без image_config (dict мутабельный)
+        # After retry body no longer has image_config (dict is mutable)
         last_body = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json", {})
         assert "image_config" not in last_body
 
@@ -449,7 +449,7 @@ class TestGenerateImage:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_image_invalid_json(self, mock_post: MagicMock) -> None:
-        """Невалидный JSON в ответе image бросает OpenRouterError."""
+        """Invalid JSON in image response raises OpenRouterError."""
         resp = _make_response(200)
         resp.json.side_effect = ValueError("Invalid JSON")
         mock_post.return_value = resp
@@ -459,7 +459,7 @@ class TestGenerateImage:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_image_empty_choices(self, mock_post: MagicMock) -> None:
-        """Пустой choices в ответе image бросает OpenRouterError."""
+        """Empty choices in image response raises OpenRouterError."""
         mock_post.return_value = _make_response(200, {"choices": []})
         client = OpenRouterClient(api_key=API_KEY)
         with pytest.raises(OpenRouterError, match="empty"):
@@ -467,7 +467,7 @@ class TestGenerateImage:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_image_no_base64_prefix(self, mock_post: MagicMock) -> None:
-        """URL без base64 prefix бросает OpenRouterError."""
+        """URL without base64 prefix raises OpenRouterError."""
         resp = _make_response(
             200,
             {
@@ -513,10 +513,10 @@ class TestGenerateAudio:
         client = OpenRouterClient(api_key=API_KEY)
         result = client.generate_audio("Hello world", model="openai/gpt-audio-mini")
         assert isinstance(result, bytes)
-        # Результат — WAV (PCM16 + WAV header)
+        # Result is WAV (PCM16 + WAV header)
         assert result[:4] == b"RIFF"
         assert b"WAVE" in result[:12]
-        # Содержит исходные PCM данные
+        # Contains the original PCM data
         assert b"fake-wav-data" in result
 
     @patch("ankiforge.openrouter.client.requests.post")
@@ -532,7 +532,7 @@ class TestGenerateAudio:
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_audio_no_chunks(self, mock_post: MagicMock) -> None:
-        """Stream без аудио-чанков бросает OpenRouterError."""
+        """Stream without audio chunks raises OpenRouterError."""
         resp = MagicMock()
         resp.status_code = 200
         resp.iter_lines.return_value = iter(["data: [DONE]"])

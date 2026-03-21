@@ -1,4 +1,4 @@
-"""Тесты для ankiforge.anki_bridge.deck_manager."""
+"""Tests for ankiforge.anki_bridge.deck_manager."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ import pytest
 from ankiforge.anki_bridge.deck_manager import add_note, create_deck, get_decks, save_media
 
 # ---------------------------------------------------------------------------
-# Fixtures — мок Anki runtime (mw, mw.col, mw.col.decks, mw.col.media, etc.)
+# Fixtures — mock Anki runtime (mw, mw.col, mw.col.decks, mw.col.media, etc.)
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture()
 def mock_mw() -> MagicMock:
-    """Мок главного окна Anki (mw) с col, decks, media, models."""
+    """Mock Anki main window (mw) with col, decks, media, models."""
     mw = MagicMock()
 
     # decks
@@ -23,11 +23,11 @@ def mock_mw() -> MagicMock:
         MagicMock(name="Default", id=1),
         MagicMock(name="Spanish", id=2),
     ]
-    # Настраиваем .name вручную (MagicMock(name=...) — это имя самого мока)
+    # Set .name manually (MagicMock(name=...) sets the mock's own name)
     mw.col.decks.all_names_and_ids.return_value[0].name = "Default"
     mw.col.decks.all_names_and_ids.return_value[1].name = "Spanish"
 
-    mw.col.decks.id_for_name.return_value = None  # колода не существует по умолчанию
+    mw.col.decks.id_for_name.return_value = None  # deck does not exist by default
 
     # media
     mw.col.media.write_data.return_value = None
@@ -51,7 +51,7 @@ def mock_mw() -> MagicMock:
 
 
 class TestGetDecks:
-    """Тесты get_decks()."""
+    """Tests for get_decks()."""
 
     def test_returns_deck_names(self, mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.deck_manager._get_mw", return_value=mock_mw):
@@ -74,7 +74,7 @@ class TestGetDecks:
 
 
 class TestCreateDeck:
-    """Тесты create_deck()."""
+    """Tests for create_deck()."""
 
     def test_creates_new_deck(self, mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.deck_manager._get_mw", return_value=mock_mw):
@@ -84,7 +84,7 @@ class TestCreateDeck:
         mock_mw.col.decks.add_normal_deck_with_name.assert_called_once_with("NewDeck")
 
     def test_does_not_duplicate_existing_deck(self, mock_mw: MagicMock) -> None:
-        mock_mw.col.decks.id_for_name.return_value = 42  # колода уже существует
+        mock_mw.col.decks.id_for_name.return_value = 42  # deck already exists
 
         with patch("ankiforge.anki_bridge.deck_manager._get_mw", return_value=mock_mw):
             create_deck("ExistingDeck")
@@ -105,7 +105,7 @@ class TestCreateDeck:
 
 
 class TestSaveMedia:
-    """Тесты save_media()."""
+    """Tests for save_media()."""
 
     def test_saves_file_with_uuid_prefix(self, mock_mw: MagicMock) -> None:
         data = b"fake-audio-data"
@@ -113,7 +113,7 @@ class TestSaveMedia:
         with patch("ankiforge.anki_bridge.deck_manager._get_mw", return_value=mock_mw):
             result = save_media("hello.mp3", data)
 
-        # Имя файла должно начинаться с UUID и заканчиваться оригинальным именем
+        # Filename should start with UUID and end with the original name
         assert result.endswith("_hello.mp3")
         assert len(result) > len("hello.mp3")
         mock_mw.col.media.write_data.assert_called_once()
@@ -141,7 +141,7 @@ class TestSaveMedia:
 
 
 class TestAddNote:
-    """Тесты add_note()."""
+    """Tests for add_note()."""
 
     def test_adds_note_to_deck(self, mock_mw: MagicMock) -> None:
         fields: dict[str, str] = {"Question": "What is Python?", "Answer": "A programming language"}
@@ -168,7 +168,7 @@ class TestAddNote:
         with patch("ankiforge.anki_bridge.deck_manager._get_mw", return_value=mock_mw):
             add_note("MyDeck", "AnkiForge QA", fields)
 
-        # Проверяем что add_note был вызван с правильной колодой
+        # Verify add_note was called with the correct deck
         mock_mw.col.decks.id_for_name.assert_called_with("MyDeck")
 
     def test_populates_note_fields(self, mock_mw: MagicMock) -> None:
@@ -179,5 +179,5 @@ class TestAddNote:
         with patch("ankiforge.anki_bridge.deck_manager._get_mw", return_value=mock_mw):
             add_note("Default", "AnkiForge QA", fields)
 
-        # Проверяем что поля были установлены
+        # Verify that fields were set
         assert mock_note.__setitem__.call_count == 2
