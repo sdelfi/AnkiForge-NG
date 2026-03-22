@@ -335,6 +335,6 @@ class TestCustomPrompt:
             custom_prompt="Be very brief.",
         )
         generator.generate(request, MagicMock())
-        prompt = mock_client.generate_text.call_args[0][0]
-        assert "Be very brief." in prompt
-        assert "concise" not in prompt.lower()
+        system_prompt = mock_client.generate_text.call_args.kwargs.get("system_prompt", "")
+        assert "Be very brief." in system_prompt
+        assert "concise" not in system_prompt.lower()

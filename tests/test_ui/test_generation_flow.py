@@ -655,17 +655,17 @@ class TestEstimateCostFromConfig:
         assert cost_no_audio < cost_all
 
     def test_language_options_no_photo_reduces_cost(self) -> None:
-        """Disabling photo should reduce cost."""
+        """Enabling photo should increase cost vs default (no photo)."""
         from ankiforge.models import LanguageOptions
         from ankiforge.ui.generate_dialog import _estimate_cost_from_config
 
         config = self._make_config()
-        cost_all = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5)
-        cost_no_photo = _estimate_cost_from_config(
-            config, GenerationMode.LANGUAGE, 5, LanguageOptions(include_photo=False)
+        cost_default = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5)
+        cost_with_photo = _estimate_cost_from_config(
+            config, GenerationMode.LANGUAGE, 5, LanguageOptions(include_photo=True)
         )
-        assert cost_all is not None and cost_no_photo is not None
-        assert cost_no_photo < cost_all
+        assert cost_default is not None and cost_with_photo is not None
+        assert cost_with_photo > cost_default
 
     def test_language_single_text_call_same_cost_with_or_without_ipa(self) -> None:
         """Transcription is included in the single JSON request — text cost is the same."""
@@ -688,9 +688,15 @@ class TestEstimateCostFromConfig:
         from ankiforge.ui.generate_dialog import _estimate_cost_from_config
 
         config = self._make_config()
-        cost_05k = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5, LanguageOptions(image_size="0.5K"))
-        cost_1k = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5, LanguageOptions(image_size="1K"))
-        cost_4k = _estimate_cost_from_config(config, GenerationMode.LANGUAGE, 5, LanguageOptions(image_size="4K"))
+        cost_05k = _estimate_cost_from_config(
+            config, GenerationMode.LANGUAGE, 5, LanguageOptions(include_photo=True, image_size="0.5K")
+        )
+        cost_1k = _estimate_cost_from_config(
+            config, GenerationMode.LANGUAGE, 5, LanguageOptions(include_photo=True, image_size="1K")
+        )
+        cost_4k = _estimate_cost_from_config(
+            config, GenerationMode.LANGUAGE, 5, LanguageOptions(include_photo=True, image_size="4K")
+        )
         assert cost_05k is not None and cost_1k is not None and cost_4k is not None
         assert cost_05k < cost_1k < cost_4k
 

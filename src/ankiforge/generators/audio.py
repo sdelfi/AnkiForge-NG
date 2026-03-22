@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ankiforge.anki_bridge.note_types import QA_AUDIO_NOTE_TYPE_NAME
+from ankiforge.generators._retry import retry_api_call
 from ankiforge.models import GeneratedCard, GenerationProgress
 
 if TYPE_CHECKING:
@@ -61,11 +62,19 @@ class AudioGenerator:
         voice = request.voice if request.voice != "alloy" else self._voice
 
         for question in questions:
-            text_prompt = f"{system_prompt}\n\nQuestion: {question}"
-            answer = self._client.generate_text(text_prompt, self._text_model, temperature=0.3)
+            user_prompt = f"Question: {question}"
+            answer = retry_api_call(
+                lambda sp=system_prompt, up=user_prompt: self._client.generate_text(
+                    up, self._text_model, temperature=0.3, system_prompt=sp
+                ),
+                item_label=question[:50],
+            )
             progress.current_cost += self._client.last_cost
 
-            audio_data = self._client.generate_audio(answer, self._audio_model, voice=voice)
+            audio_data = retry_api_call(
+                lambda a=answer, v=voice: self._client.generate_audio(a, self._audio_model, voice=v),
+                item_label=f"audio:{question[:30]}",
+            )
             progress.current_cost += self._client.last_cost
 
             cards.append(

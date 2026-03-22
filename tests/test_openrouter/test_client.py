@@ -311,7 +311,8 @@ def _audio_stream_response(audio_b64: str | None = None) -> MagicMock:
     """Mock streaming OpenRouter response with audio chunks."""
     import json
 
-    b64 = audio_b64 or base64.b64encode(b"fake-wav-data").decode()
+    # At least 2400 bytes of PCM data to pass minimum length validation
+    b64 = audio_b64 or base64.b64encode(b"\x00\x80" * 1400).decode()
     # Split base64 into two chunks for realism
     mid = len(b64) // 2
     chunk1 = b64[:mid]
@@ -516,8 +517,8 @@ class TestGenerateAudio:
         # Result is WAV (PCM16 + WAV header)
         assert result[:4] == b"RIFF"
         assert b"WAVE" in result[:12]
-        # Contains the original PCM data
-        assert b"fake-wav-data" in result
+        # WAV header (44 bytes) + PCM data
+        assert len(result) > 44 + 2400
 
     @patch("ankiforge.openrouter.client.requests.post")
     def test_sends_audio_params(self, mock_post: MagicMock) -> None:

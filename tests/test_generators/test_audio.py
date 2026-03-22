@@ -335,6 +335,6 @@ class TestCustomPrompt:
             custom_prompt="Answer in Russian only.",
         )
         generator.generate(request, MagicMock())
-        prompt = mock_client.generate_text.call_args[0][0]
-        assert "Answer in Russian only." in prompt
-        assert "concise" not in prompt.lower()
+        system_prompt = mock_client.generate_text.call_args.kwargs.get("system_prompt", "")
+        assert "Answer in Russian only." in system_prompt
+        assert "concise" not in system_prompt.lower()

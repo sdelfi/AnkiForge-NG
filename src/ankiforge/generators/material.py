@@ -6,6 +6,7 @@ import re
 from typing import TYPE_CHECKING
 
 from ankiforge.anki_bridge.note_types import QA_IMAGE_NOTE_TYPE_NAME, QA_NOTE_TYPE_NAME
+from ankiforge.generators._retry import retry_api_call
 from ankiforge.models import AnswerDetail, GeneratedCard, GenerationProgress
 
 if TYPE_CHECKING:
@@ -198,14 +199,20 @@ class MaterialGenerator:
 
             # Extract facts
             extract_prompt = _EXTRACT_PROMPT.format(max_facts=max_cards, paragraph=paragraph)
-            facts = self._client.generate_text(extract_prompt, self._text_model, temperature=0.2)
+            facts = retry_api_call(
+                lambda ep=extract_prompt: self._client.generate_text(ep, self._text_model, temperature=0.2),
+                item_label=f"extract:{i + 1}/{len(paragraphs)}",
+            )
             progress.current_cost += self._client.last_cost
 
             # Generate QA from facts + original paragraph
             generate_prompt = _GENERATE_PROMPT.format(
                 language=language, paragraph=paragraph, facts=facts, answer_instructions=answer_instructions
             )
-            response = self._client.generate_text(generate_prompt, self._text_model, temperature=0.3)
+            response = retry_api_call(
+                lambda gp=generate_prompt: self._client.generate_text(gp, self._text_model, temperature=0.3),
+                item_label=f"generate:{i + 1}/{len(paragraphs)}",
+            )
             progress.current_cost += self._client.last_cost
             pairs = self._parse_qa_pairs(response)
             all_pairs.extend(pairs)
@@ -224,10 +231,9 @@ class MaterialGenerator:
             if use_images:
                 image_prompt = _IMAGE_PROMPT_TEMPLATE.format(topic=question)
                 assert self._image_model is not None
-                image_data = self._client.generate_image(
-                    image_prompt,
-                    self._image_model,
-                    size=image_size,
+                image_data = retry_api_call(
+                    lambda p=image_prompt, sz=image_size: self._client.generate_image(p, self._image_model, size=sz),
+                    item_label=f"image:{question[:30]}",
                 )
                 progress.current_cost += self._client.last_cost
                 progress_callback(progress)
@@ -257,7 +263,10 @@ class MaterialGenerator:
     ) -> list[GeneratedCard]:
         """Single-pass generation with custom prompt."""
         prompt = f"{custom_prompt}\n\nMaterial:\n{text}"
-        response = self._client.generate_text(prompt, self._text_model)
+        response = retry_api_call(
+            lambda: self._client.generate_text(prompt, self._text_model),
+            item_label="single-pass",
+        )
         text_cost = self._client.last_cost
         pairs = self._parse_qa_pairs(response)
 
@@ -270,10 +279,9 @@ class MaterialGenerator:
             if use_images:
                 image_prompt = _IMAGE_PROMPT_TEMPLATE.format(topic=question)
                 assert self._image_model is not None
-                image_data = self._client.generate_image(
-                    image_prompt,
-                    self._image_model,
-                    size=image_size,
+                image_data = retry_api_call(
+                    lambda p=image_prompt, sz=image_size: self._client.generate_image(p, self._image_model, size=sz),
+                    item_label=f"image:{question[:30]}",
                 )
                 progress.current_cost += self._client.last_cost
 

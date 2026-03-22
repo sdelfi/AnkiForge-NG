@@ -55,7 +55,7 @@ class CardRequest:
 class LanguageOptions:
     """Language card generation options."""
 
-    include_photo: bool = True
+    include_photo: bool = False
     include_audio_word: bool = True
     include_audio_definition: bool = True
     include_audio_example: bool = True

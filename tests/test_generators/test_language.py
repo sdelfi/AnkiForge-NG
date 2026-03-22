@@ -177,11 +177,18 @@ class TestGenerate:
         assert len(cards) == 2
         assert all(isinstance(c, GeneratedCard) for c in cards)
 
-    def test_card_fields_all_options(
-        self, generator: LanguageGenerator, mock_client: MagicMock, base_request: CardRequest
-    ) -> None:
-        """Default — all options: audio_data, audio_definition, audio_example, image_data, transcription."""
-        cards = generator.generate(base_request, MagicMock())
+    def test_card_fields_all_options(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
+        """All options enabled: audio_data, audio_definition, audio_example, image_data, transcription."""
+        from ankiforge.models import LanguageOptions
+
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple\nbanana",
+            target_deck="Test Deck",
+            language="en",
+            language_options=LanguageOptions(include_photo=True),
+        )
+        cards = generator.generate(request, MagicMock())
         card = cards[0]
         assert card.word == "apple"
         assert card.definition is not None
@@ -256,8 +263,8 @@ class TestGenerate:
             costs.append(progress.current_cost)
 
         gen.generate(request, capture)
-        # 5 API calls (text + 3 audio + image), each $0.05
-        assert costs[-1] == pytest.approx(0.25, abs=0.01)
+        # 4 API calls (text + 3 audio), each $0.05 (include_photo=False by default)
+        assert costs[-1] == pytest.approx(0.20, abs=0.01)
 
     def test_cost_fallback_to_pricing(self, mock_client: MagicMock) -> None:
         """If usage.cost == 0, calculate from tokens x pricing."""
@@ -287,8 +294,8 @@ class TestGenerate:
             costs.append(progress.current_cost)
 
         gen.generate(request, capture)
-        # Each call: 100*0.001 + 50*0.002 = 0.2; 5 calls = 1.0
-        assert costs[-1] == pytest.approx(1.0, abs=0.01)
+        # Each call: 100*0.001 + 50*0.002 = 0.2; 4 calls = 0.8 (include_photo=False by default)
+        assert costs[-1] == pytest.approx(0.8, abs=0.01)
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +366,7 @@ class TestLanguageOptions:
             input_text="apple",
             target_deck="Test",
             language="en",
-            language_options=LanguageOptions(detailed_image=True),
+            language_options=LanguageOptions(include_photo=True, detailed_image=True),
         )
         generator.generate(request, MagicMock())
         image_prompt = mock_client.generate_image.call_args[0][0]
@@ -407,7 +414,7 @@ class TestLanguageOptions:
             input_text="apple",
             target_deck="Test",
             language="en",
-            language_options=LanguageOptions(image_size="0.5K"),
+            language_options=LanguageOptions(include_photo=True, image_size="0.5K"),
         )
         generator.generate(request, MagicMock())
         _, kwargs = mock_client.generate_image.call_args
@@ -439,7 +446,7 @@ class TestLanguageOptions:
             input_text="apple",
             target_deck="Test",
             language="en",
-            language_options=LanguageOptions(image_size="auto"),
+            language_options=LanguageOptions(include_photo=True, image_size="auto"),
         )
         generator.generate(request, MagicMock())
         _, kwargs = mock_client.generate_image.call_args
@@ -488,22 +495,22 @@ class TestPrompt:
     def test_prompt_asks_for_json(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
         request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
         generator.generate(request, MagicMock())
-        prompt = mock_client.generate_text.call_args[0][0]
-        assert "json" in prompt.lower() or "JSON" in prompt
+        system_prompt = mock_client.generate_text.call_args.kwargs.get("system_prompt", "")
+        assert "json" in system_prompt.lower() or "JSON" in system_prompt
 
     def test_prompt_requires_word_in_definition(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
         """Prompt must require using the word in the definition."""
         request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
         generator.generate(request, MagicMock())
-        prompt = mock_client.generate_text.call_args[0][0]
-        assert "starts with the word" in prompt.lower() or "STARTS with the word" in prompt
+        system_prompt = mock_client.generate_text.call_args.kwargs.get("system_prompt", "")
+        assert "starts with the word" in system_prompt.lower() or "STARTS with the word" in system_prompt
 
     def test_prompt_requires_word_in_example(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
         """Prompt must require using the word in the example."""
         request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
         generator.generate(request, MagicMock())
-        prompt = mock_client.generate_text.call_args[0][0]
-        assert "uses the word" in prompt.lower() or "USES THE WORD" in prompt
+        system_prompt = mock_client.generate_text.call_args.kwargs.get("system_prompt", "")
+        assert "uses the word" in system_prompt.lower() or "USES THE WORD" in system_prompt
 
     def test_custom_prompt_overrides(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
         request = CardRequest(
@@ -514,11 +521,19 @@ class TestPrompt:
             custom_prompt="Fun fact about this word",
         )
         generator.generate(request, MagicMock())
-        prompt = mock_client.generate_text.call_args[0][0]
-        assert "Fun fact" in prompt
+        system_prompt = mock_client.generate_text.call_args.kwargs.get("system_prompt", "")
+        assert "Fun fact" in system_prompt
 
     def test_image_prompt_contains_example(self, generator: LanguageGenerator, mock_client: MagicMock) -> None:
-        request = CardRequest(mode=GenerationMode.LANGUAGE, input_text="apple", target_deck="Test", language="en")
+        from ankiforge.models import LanguageOptions
+
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(include_photo=True),
+        )
         generator.generate(request, MagicMock())
         image_prompt = mock_client.generate_image.call_args[0][0]
         assert "apple" in image_prompt.lower() or "tree" in image_prompt.lower()

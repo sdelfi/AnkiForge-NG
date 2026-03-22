@@ -236,9 +236,9 @@ class TestPrompt:
 
         generator.generate(request, MagicMock())
 
-        prompt = mock_client.generate_text.call_args[0][0]
-        # Prompt should instruct AI to give a compact but informative answer
-        assert any(word in prompt.lower() for word in ["concise", "compact", "кратк", "компактн"])
+        system_prompt = mock_client.generate_text.call_args.kwargs.get("system_prompt", "")
+        # System prompt should instruct AI to give a compact but informative answer
+        assert any(word in system_prompt.lower() for word in ["concise", "compact", "кратк", "компактн"])
 
 
 # ---------------------------------------------------------------------------
@@ -305,9 +305,9 @@ class TestCustomPrompt:
 
         generator.generate(request, MagicMock())
 
-        prompt = mock_client.generate_text.call_args[0][0]
-        assert "Answer in one word only." in prompt
-        assert "concise" not in prompt.lower()
+        system_prompt = mock_client.generate_text.call_args.kwargs.get("system_prompt", "")
+        assert "Answer in one word only." in system_prompt
+        assert "concise" not in system_prompt.lower()
 
     def test_no_custom_prompt_uses_default(
         self,
@@ -323,5 +323,5 @@ class TestCustomPrompt:
 
         generator.generate(request, MagicMock())
 
-        prompt = mock_client.generate_text.call_args[0][0]
-        assert any(word in prompt.lower() for word in ["concise", "compact"])
+        system_prompt = mock_client.generate_text.call_args.kwargs.get("system_prompt", "")
+        assert any(word in system_prompt.lower() for word in ["concise", "compact"])

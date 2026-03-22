@@ -217,7 +217,7 @@ def _estimate_cost_from_config(
         cost += (tp.prompt * avg_prompt_tokens + tp.completion * avg_completion_tokens) * card_count * text_multiplier
 
     if ip is not None and mode_val in ("language", "image", "material"):
-        include_img = True
+        include_img = mode_val != "language"  # language: default off, others: on
         img_size = image_size
         if mode_val == "language" and language_options:
             include_img = language_options.include_photo
@@ -1046,7 +1046,7 @@ class InputDialog:
             }
             for key, label in checkbox_defs:
                 cb = QCheckBox(label)
-                cb.setChecked(key not in ("detailed_image",))
+                cb.setChecked(key not in ("include_photo", "detailed_image"))
                 cb.stateChanged.connect(self._update_cost_estimate)
                 self._lang_options_checkboxes[key] = cb
                 tip = _cb_tooltips.get(key)

@@ -17,7 +17,7 @@ from ankiforge.openrouter.exceptions import (
 from ankiforge.openrouter.models import Modality, Model, ModelPricing
 
 _DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
-_DEFAULT_TIMEOUT = 30
+_DEFAULT_TIMEOUT = 90
 _DEFAULT_MAX_RETRIES = 3
 _DEFAULT_BASE_DELAY = 1.0
 _DEFAULT_MODELS_CACHE_TTL = 300.0
@@ -74,13 +74,21 @@ class OpenRouterClient:
             "Content-Type": "application/json",
         }
 
-    def generate_text(self, prompt: str, model: str, *, temperature: float | None = None) -> str:
+    def generate_text(
+        self,
+        prompt: str,
+        model: str,
+        *,
+        temperature: float | None = None,
+        system_prompt: str | None = None,
+    ) -> str:
         """Generate text via the OpenRouter Chat Completions API.
 
         Args:
-            prompt: The prompt text.
+            prompt: The user prompt text.
             model: Model ID (e.g. 'openai/gpt-4o').
             temperature: Generation temperature (0.0–2.0). None uses the model default.
+            system_prompt: Optional system message (sent as role=system before the user prompt).
 
         Returns:
             Generated text.
@@ -91,9 +99,13 @@ class OpenRouterClient:
             OpenRouterTimeoutError: Request timeout.
             OpenRouterError: Other API errors.
         """
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
         body: dict[str, object] = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
         if temperature is not None:
             body["temperature"] = temperature
@@ -274,12 +286,15 @@ class OpenRouterClient:
         """Perform a streaming request and collect audio chunks."""
         import json as _json
 
+        # (connect_timeout, read_timeout) — read timeout per chunk, not total
+        stream_timeout = (self.timeout, self.timeout)
+
         try:
             resp = requests.post(
                 f"{self.base_url}/chat/completions",
                 headers=self._headers(),
                 json=body,
-                timeout=self.timeout,
+                timeout=stream_timeout,
                 stream=True,
             )
         except requests.Timeout as e:
@@ -292,21 +307,26 @@ class OpenRouterClient:
 
         audio_chunks: list[str] = []
         last_chunk_data: dict[str, object] = {}
-        for line in resp.iter_lines(decode_unicode=True):
-            if not line or not line.startswith("data: "):
-                continue
-            payload = line[len("data: ") :]
-            if payload.strip() == "[DONE]":
-                break
-            try:
-                chunk = _json.loads(payload)
-            except (ValueError, TypeError):
-                continue
-            last_chunk_data = chunk
-            delta = chunk.get("choices", [{}])[0].get("delta", {})
-            audio_data = delta.get("audio", {})
-            if isinstance(audio_data, dict) and audio_data.get("data"):
-                audio_chunks.append(audio_data["data"])
+        try:
+            for line in resp.iter_lines(decode_unicode=True):
+                if not line or not line.startswith("data: "):
+                    continue
+                payload = line[len("data: ") :]
+                if payload.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = _json.loads(payload)
+                except (ValueError, TypeError):
+                    continue
+                last_chunk_data = chunk
+                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                audio_data = delta.get("audio", {})
+                if isinstance(audio_data, dict) and audio_data.get("data"):
+                    audio_chunks.append(audio_data["data"])
+        except requests.Timeout as e:
+            raise OpenRouterTimeoutError(f"Stream read timeout: {e}") from e
+        except requests.ConnectionError as e:
+            raise OpenRouterError(f"Stream connection lost: {e}") from e
 
         # Usage often arrives in the last chunk
         if last_chunk_data:
@@ -320,6 +340,10 @@ class OpenRouterClient:
             pcm_data = base64.b64decode(combined_b64)
         except Exception as e:
             raise OpenRouterError("Failed to decode base64 audio") from e
+
+        # Validate: at least 0.05s of audio (24000 Hz * 2 bytes * 0.05s = 2400 bytes)
+        if len(pcm_data) < 2400:
+            raise OpenRouterError(f"Audio too short ({len(pcm_data)} bytes PCM), likely corrupted")
 
         return self._pcm16_to_wav(pcm_data)
 

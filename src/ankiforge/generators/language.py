@@ -7,6 +7,7 @@ import re
 from typing import TYPE_CHECKING
 
 from ankiforge.anki_bridge.note_types import LANGUAGE_NOTE_TYPE_NAME
+from ankiforge.generators._retry import retry_api_call
 from ankiforge.models import GeneratedCard, GenerationProgress
 
 if TYPE_CHECKING:
@@ -178,8 +179,15 @@ class LanguageGenerator:
 
         for word in words:
             # 1 request: definition + example + IPA (JSON)
-            prompt = self._build_prompt(word, request.language, request.custom_prompt, opts.include_transcription)
-            response = self._client.generate_text(prompt, self._text_model, temperature=0.3)
+            system_prompt, user_prompt = self._build_prompt(
+                word, request.language, request.custom_prompt, opts.include_transcription
+            )
+            response = retry_api_call(
+                lambda s=system_prompt, u=user_prompt: self._client.generate_text(
+                    u, self._text_model, temperature=0.3, system_prompt=s
+                ),
+                item_label=word,
+            )
             total_cost += self._cost_from_usage(self._text_pricing)
             definition, example, transcription = self._parse_json_response(response)
 
@@ -189,19 +197,28 @@ class LanguageGenerator:
             # Audio: word pronunciation
             audio_data: bytes | None = None
             if opts.include_audio_word:
-                audio_data = self._client.generate_audio(word, self._audio_model, voice=opts.voice)
+                audio_data = retry_api_call(
+                    lambda w=word: self._client.generate_audio(w, self._audio_model, voice=opts.voice),
+                    item_label=f"audio:{word}",
+                )
                 total_cost += self._cost_from_usage(self._audio_pricing)
 
             # Audio: definition narration
             audio_definition: bytes | None = None
             if opts.include_audio_definition and definition:
-                audio_definition = self._client.generate_audio(definition, self._audio_model, voice=opts.voice)
+                audio_definition = retry_api_call(
+                    lambda d=definition: self._client.generate_audio(d, self._audio_model, voice=opts.voice),
+                    item_label=f"audio-def:{word}",
+                )
                 total_cost += self._cost_from_usage(self._audio_pricing)
 
             # Audio: example narration (clean, no silence)
             audio_example: bytes | None = None
             if opts.include_audio_example and example:
-                audio_example = self._client.generate_audio(example, self._audio_model, voice=opts.voice)
+                audio_example = retry_api_call(
+                    lambda e=example: self._client.generate_audio(e, self._audio_model, voice=opts.voice),
+                    item_label=f"audio-ex:{word}",
+                )
                 total_cost += self._cost_from_usage(self._audio_pricing)
 
             # Image: scene from example
@@ -210,7 +227,10 @@ class LanguageGenerator:
                 template = _DETAILED_IMAGE_PROMPT_TEMPLATE if opts.detailed_image else _IMAGE_PROMPT_TEMPLATE
                 image_prompt = template.format(example=example)
                 size = opts.image_size if opts.image_size != "auto" else None
-                image_data = self._client.generate_image(image_prompt, self._image_model, size=size)
+                image_data = retry_api_call(
+                    lambda p=image_prompt, sz=size: self._client.generate_image(p, self._image_model, size=sz),
+                    item_label=f"image:{word}",
+                )
                 total_cost += self._cost_from_usage(self._image_pricing, is_image=True)
 
             # Silence between definition and example audio (separate file)
@@ -261,10 +281,12 @@ class LanguageGenerator:
             return token_cost
         return 0.0
 
-    def _build_prompt(self, word: str, language: str, custom_prompt: str | None, include_ipa: bool = True) -> str:
-        """Build prompt for generating definition + example + IPA (single JSON request)."""
+    def _build_prompt(
+        self, word: str, language: str, custom_prompt: str | None, include_ipa: bool = True
+    ) -> tuple[str, str]:
+        """Build (system_prompt, user_prompt) for generating definition + example + IPA."""
         if custom_prompt:
-            return f"{custom_prompt}\n\nWord: {word}\nLanguage: {language}"
+            return (custom_prompt, f"Word: {word}\nLanguage: {language}")
 
         ipa_note = ' Include "ipa" field.' if include_ipa else " Omit the ipa field."
         lang_note = (
@@ -273,7 +295,9 @@ class LanguageGenerator:
             if language != "en"
             else ""
         )
-        return f"{_DEFAULT_SYSTEM_PROMPT}\n{ipa_note}{lang_note}\n\nLanguage: {language}\nWord: {word}"
+        system = f"{_DEFAULT_SYSTEM_PROMPT}\n{ipa_note}{lang_note}"
+        user = f"Language: {language}\nWord: {word}"
+        return (system, user)
 
     def _parse_words(self, text: str) -> list[str]:
         """Parse words from text (by lines or comma-separated)."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ankiforge.anki_bridge.note_types import QA_NOTE_TYPE_NAME
+from ankiforge.generators._retry import retry_api_call
 from ankiforge.models import GeneratedCard, GenerationProgress
 
 if TYPE_CHECKING:
@@ -52,8 +53,13 @@ class QuestionsGenerator:
         system_prompt = request.custom_prompt or _SYSTEM_PROMPT
 
         for question in questions:
-            prompt = f"{system_prompt}\n\nQuestion: {question}"
-            answer = self._client.generate_text(prompt, self._model, temperature=0.3)
+            user_prompt = f"Question: {question}"
+            answer = retry_api_call(
+                lambda sp=system_prompt, up=user_prompt: self._client.generate_text(
+                    up, self._model, temperature=0.3, system_prompt=sp
+                ),
+                item_label=question[:50],
+            )
             progress.current_cost += self._client.last_cost
 
             cards.append(
