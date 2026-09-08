@@ -70,7 +70,7 @@ It works with **any model** available on OpenRouter (GPT-4o, Claude, Gemini, Lla
 
 1. Open Anki
 2. Go to **Tools → Add-ons → Get Add-ons...**
-3. Paste the add-on code: `TODO — fill in after publishing to AnkiWeb`
+3. Paste the add-on code: `597444116`
 4. Restart Anki
 
 ### Manual install
