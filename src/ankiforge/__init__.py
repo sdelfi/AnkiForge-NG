@@ -19,11 +19,13 @@ def _register_addon() -> None:
     def on_main_window_init() -> None:
         """Initialize after main window is loaded."""
         from ankiforge.config.dialog import setup_settings_menu
+        from ankiforge.ui.editor_button import setup_editor_button
         from ankiforge.ui.main_button import setup_deck_browser_button, setup_main_button
 
         setup_settings_menu(mw)
         setup_main_button(mw)
         setup_deck_browser_button(mw)
+        setup_editor_button()
 
     gui_hooks.main_window_did_init.append(on_main_window_init)
 
