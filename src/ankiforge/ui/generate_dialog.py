@@ -931,7 +931,7 @@ class InputDialog:
         # Content inside scroll area
         content = _QWidget()
         layout = QVBoxLayout()
-        layout.setSpacing(16)
+        layout.setSpacing(12)
         layout.setContentsMargins(14, 14, 14, 6)
         content.setLayout(layout)
 
@@ -953,7 +953,7 @@ class InputDialog:
         input_vlayout.setContentsMargins(8, 6, 8, 8)
         self._input_text = QPlainTextEdit()
         self._input_text.setPlaceholderText(_get_input_placeholder(mode))
-        self._input_text.setMinimumHeight(140)
+        self._input_text.setMinimumHeight(90)
         input_vlayout.addWidget(self._input_text)
         input_group.setLayout(input_vlayout)
         layout.addWidget(input_group)
@@ -1243,7 +1243,7 @@ class InputDialog:
         # Scale to screen size — width is 30% narrower than the old fixed
         # 0.4/520 sizing, height auto-fits the content so the scroll area
         # only kicks in when the screen itself is too small.
-        w, h = get_adaptive_dialog_size(content, width_pct=0.28, min_w=420, min_h=420, max_height_pct=0.85)
+        w, h = get_adaptive_dialog_size(content, width_pct=0.28, min_w=420, min_h=420, max_height_pct=0.95)
         self._dialog.resize(w, h)
 
         self._go_back = False

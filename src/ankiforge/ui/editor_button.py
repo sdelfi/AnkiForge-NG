@@ -17,7 +17,7 @@ from ankiforge.models import CardRequest, GenerationMode, LanguageOptions
 if TYPE_CHECKING:
     from anki.notes import Note  # type: ignore[import-not-found]
     from aqt.editor import Editor  # type: ignore[import-not-found]
-    from aqt.qt import QComboBox  # type: ignore[import-not-found]
+    from aqt.qt import QCheckBox, QComboBox  # type: ignore[import-not-found]
 
     from ankiforge.models import AddonConfig, GeneratedCard
 
@@ -33,7 +33,13 @@ _CHECKBOX_DEFS = (
     ("include_audio_definition", "Audio: definition narration"),
     ("include_audio_example", "Audio: example narration"),
     ("include_transcription", "Phonetic transcription (IPA)"),
+    ("detailed_image", "Detailed image (HD prompt)"),
 )
+_CHECKBOX_TOOLTIPS = {
+    "detailed_image": "Uses a richer prompt for higher quality images. Costs more per image",
+}
+# Unchecked by default — mirrors generate_dialog's Language "Generation options".
+_CHECKBOX_DEFAULT_UNCHECKED = {"include_photo", "detailed_image"}
 
 
 # ---------------------------------------------------------------------------
@@ -134,14 +140,30 @@ def _create_image_size_combo() -> QComboBox:
     return combo
 
 
+def _build_options_from_checkboxes(
+    checkboxes: dict[str, QCheckBox], voice_combo: QComboBox, image_size_combo: QComboBox
+) -> LanguageOptions:
+    """Build LanguageOptions from the options dialog's widgets."""
+    return LanguageOptions(
+        include_photo=checkboxes["include_photo"].isChecked(),
+        include_audio_word=checkboxes["include_audio_word"].isChecked(),
+        include_audio_definition=checkboxes["include_audio_definition"].isChecked(),
+        include_audio_example=checkboxes["include_audio_example"].isChecked(),
+        include_transcription=checkboxes["include_transcription"].isChecked(),
+        detailed_image=checkboxes["detailed_image"].isChecked(),
+        voice=voice_combo.currentData() or "alloy",
+        image_size=image_size_combo.currentData() or "auto",
+    )
+
+
 class _RegenerateOptionsDialog:
     """Small modal dialog to pick which fields to regenerate.
 
     Mirrors the "Generation options" section of the main Language
-    generation dialog, so regenerating from the editor offers the same
-    choices (which parts to generate, voice, image size) instead of
-    silently guessing. Checkboxes for audio/photo are disabled when no
-    matching model is configured in AnkiForge Settings.
+    generation dialog exactly: every checkbox stays togglable regardless of
+    which models are configured (checking "Generate photo" without an image
+    model configured just fails at generation time, same as in the main
+    dialog), and a live cost estimate updates as options change.
     """
 
     def __init__(self, parent: object, note: Note, config: AddonConfig) -> None:
@@ -153,6 +175,8 @@ class _RegenerateOptionsDialog:
             QLabel,
             QVBoxLayout,
         )
+
+        self._config = config
 
         self._dialog = QDialog(parent)
         self._dialog.setWindowTitle("Regenerate with AnkiForge")
@@ -169,39 +193,45 @@ class _RegenerateOptionsDialog:
         form = QFormLayout()
         layout.addLayout(form)
 
-        has_audio_model = bool(config.audio_model)
-        has_image_model = bool(config.image_model)
-        availability = {
-            "include_photo": has_image_model,
-            "include_audio_word": has_audio_model,
-            "include_audio_definition": has_audio_model,
-            "include_audio_example": has_audio_model,
-            "include_transcription": True,
-        }
-
         self._checkboxes: dict[str, QCheckBox] = {}
         for key, label in _CHECKBOX_DEFS:
-            available = availability[key]
             cb = QCheckBox(label)
-            cb.setChecked(available and key != "include_photo")
-            cb.setEnabled(available)
-            if not available:
-                cb.setToolTip("No model configured for this in AnkiForge Settings")
+            cb.setChecked(key not in _CHECKBOX_DEFAULT_UNCHECKED)
+            cb.stateChanged.connect(self._update_cost_estimate)
+            tip = _CHECKBOX_TOOLTIPS.get(key)
+            if tip:
+                cb.setToolTip(tip)
             self._checkboxes[key] = cb
             form.addRow(cb)
 
         self._voice_combo = _create_voice_combo()
-        self._voice_combo.setEnabled(has_audio_model)
         form.addRow("Voice:", self._voice_combo)
 
         self._image_size_combo = _create_image_size_combo()
-        self._image_size_combo.setEnabled(has_image_model)
+        self._image_size_combo.currentIndexChanged.connect(self._update_cost_estimate)
         form.addRow("Image size:", self._image_size_combo)
+
+        self._cost_label = QLabel("")
+        layout.addWidget(self._cost_label)
 
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         button_box.accepted.connect(self._dialog.accept)
         button_box.rejected.connect(self._dialog.reject)
         layout.addWidget(button_box)
+
+        self._update_cost_estimate()
+
+    def _update_cost_estimate(self) -> None:
+        """Recalculate and display the cost estimate from cached pricing in config."""
+        from ankiforge.ui.generate_dialog import _estimate_cost_from_config
+        from ankiforge.ui.progress_widget import _format_cost
+
+        options = _build_options_from_checkboxes(self._checkboxes, self._voice_combo, self._image_size_combo)
+        cost = _estimate_cost_from_config(self._config, GenerationMode.LANGUAGE, 1, options)
+        if cost is None:
+            self._cost_label.setText("Pricing not loaded — open AnkiForge Settings")
+            return
+        self._cost_label.setText(f"Estimate: {_format_cost(cost)}")
 
     def run(self) -> LanguageOptions | None:
         """Show the dialog modally.
@@ -214,15 +244,7 @@ class _RegenerateOptionsDialog:
         if self._dialog.exec() != QDialog.DialogCode.Accepted:
             return None
 
-        return LanguageOptions(
-            include_photo=self._checkboxes["include_photo"].isChecked(),
-            include_audio_word=self._checkboxes["include_audio_word"].isChecked(),
-            include_audio_definition=self._checkboxes["include_audio_definition"].isChecked(),
-            include_audio_example=self._checkboxes["include_audio_example"].isChecked(),
-            include_transcription=self._checkboxes["include_transcription"].isChecked(),
-            voice=self._voice_combo.currentData() or "alloy",
-            image_size=self._image_size_combo.currentData() or "auto",
-        )
+        return _build_options_from_checkboxes(self._checkboxes, self._voice_combo, self._image_size_combo)
 
 
 # ---------------------------------------------------------------------------
