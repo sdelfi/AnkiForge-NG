@@ -1,17 +1,23 @@
-# AnkiForge
+# AnkiForge NG
 
-**AI-powered flashcard generation for Anki** — create high-quality cards in seconds using any LLM via [OpenRouter](https://openrouter.ai/).
+> Fork of [AnkiForge](https://github.com/Xpom1/AnkiForge) by Xpom1, licensed under GPL-3.0.
+>
+> This fork adds:
+> - Support for local/custom OpenAI-compatible APIs (LM Studio, Ollama, vLLM, ...) alongside OpenRouter — mix and match models per slot (text/image/audio).
+> - A fix for a JSON-parsing bug where an unquoted IPA value could corrupt the generated definition/example fields.
+
+**AI-powered flashcard generation for Anki** — create high-quality cards in seconds using any LLM via [OpenRouter](https://openrouter.ai/) or a local model server.
 
 <!-- Replace with actual screenshot after taking them -->
 ![AnkiForge — Mode Selection](docs/screenshots/mode-selection.png)
 
 ---
 
-## What is AnkiForge?
+## What is AnkiForge NG?
 
-AnkiForge is a free, open-source Anki add-on that generates flashcards using AI. Instead of spending hours writing cards by hand, just type a few words or paste your study notes — AnkiForge creates complete, ready-to-study cards with definitions, examples, audio, and images.
+AnkiForge NG is a free, open-source Anki add-on that generates flashcards using AI. Instead of spending hours writing cards by hand, just type a few words or paste your study notes — AnkiForge NG creates complete, ready-to-study cards with definitions, examples, audio, and images.
 
-It works with **any model** available on OpenRouter (GPT-4o, Claude, Gemini, Llama, and 200+ others), so you choose the price/quality balance that works for you.
+It works with **any model** available on OpenRouter (GPT-4o, Claude, Gemini, Llama, and 200+ others) — or with a **local model server** like LM Studio, Ollama, or vLLM — so you choose the price/quality/privacy balance that works for you.
 
 ## Features
 
@@ -25,9 +31,10 @@ It works with **any model** available on OpenRouter (GPT-4o, Claude, Gemini, Lla
 | **QA + Image** | Your questions | Answers with AI-generated illustrations |
 | **QA + Audio** | Your questions | Answers with text-to-speech narration |
 
-### Why AnkiForge?
+### Why AnkiForge NG?
 
 - **Any LLM model** — pick from 200+ models on OpenRouter, from free to state-of-the-art
+- **Local models too** — point any dropdown at LM Studio, Ollama, or another OpenAI-compatible server for free, private generation
 - **Cost estimation** — see the price before generating, track actual spending in real time
 - **Custom prompts** — tweak AI instructions for any mode to fit your study style
 - **Code highlighting** — cards render code blocks with syntax highlighting via highlight.js
@@ -63,7 +70,7 @@ It works with **any model** available on OpenRouter (GPT-4o, Claude, Gemini, Lla
 
 1. Open Anki
 2. Go to **Tools → Add-ons → Get Add-ons...**
-3. Paste the add-on code: `1482895298`
+3. Paste the add-on code: `TODO — fill in after publishing to AnkiWeb`
 4. Restart Anki
 
 ### Manual install
@@ -120,8 +127,8 @@ AnkiForge is **free**. You only pay for AI usage through OpenRouter.
 ## Development
 
 ```bash
-git clone https://github.com/Xpom1/AnkiForge.git
-cd AnkiForge
+git clone https://github.com/YOUR_USERNAME/AnkiForge-NG.git
+cd AnkiForge-NG
 
 uv sync                          # install dependencies
 uv run pytest                    # run tests with coverage
@@ -138,9 +145,10 @@ src/ankiforge/
 ├── models.py                 # Dataclasses: CardRequest, GeneratedCard, AddonConfig
 ├── config/
 │   ├── manager.py            # Read/write config via Anki API + JSON fallback
-│   └── dialog.py             # Settings dialog (API key, model pickers, balance)
+│   └── dialog.py             # Settings dialog (API key, model pickers, balance, local endpoint)
 ├── openrouter/
-│   ├── client.py             # HTTP client with retry/backoff
+│   ├── client.py             # HTTP client with retry/backoff (OpenRouter + any OpenAI-compatible server)
+│   ├── routing_client.py     # Routes calls to OpenRouter vs. a local/custom endpoint by model id
 │   ├── models.py             # Model, Modality types
 │   └── exceptions.py         # Typed exception hierarchy
 ├── generators/
@@ -162,11 +170,11 @@ src/ankiforge/
 
 ## Support the Project
 
-AnkiForge is free and open source. If you find it useful, consider supporting development:
+AnkiForge NG is free and open source. This fork builds on the original AnkiForge by Xpom1 — if you'd like to support the original author's work directly:
 
 **EVM:** `0x34f58CF2BE6073f12b2c3c6aE9f8c31983A3f5fE`
 <br>Networks: Ethereum, Base, Arbitrum, Avalanche
 
 ## License
 
-GPL-3.0 — see [LICENSE](LICENSE)
+GPL-3.0 — see [LICENSE](LICENSE). This is a fork of [AnkiForge](https://github.com/Xpom1/AnkiForge) by Xpom1, also GPL-3.0.

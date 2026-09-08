@@ -87,6 +87,9 @@ def _dict_to_config(data: dict[str, object] | None) -> AddonConfig:
         image_model_pricing=_parse_pricing(data.get("image_model_pricing")),
         audio_model_pricing=_parse_pricing(data.get("audio_model_pricing")),
         cached_balance=cached_balance,
+        custom_base_url=str(data.get("custom_base_url", defaults.custom_base_url)),
+        custom_api_key=str(data.get("custom_api_key", defaults.custom_api_key)),
+        custom_label=str(data.get("custom_label", defaults.custom_label)),
     )
 
 
@@ -183,5 +186,34 @@ def validate_api_key(api_key: str) -> tuple[bool, str | None]:
 
     if resp.status_code == 401:
         return False, "Invalid API key"
+
+    return False, f"Unexpected response: {resp.status_code}"
+
+
+def validate_custom_endpoint(base_url: str) -> tuple[bool, str | None]:
+    """Check that a custom OpenAI-compatible endpoint (e.g. LM Studio) is reachable.
+
+    Unlike OpenRouter, custom endpoints have no fixed key format and usually
+    don't require auth at all, so this only checks that GET {base_url}/models
+    responds. Per-model auth errors (if any) surface later when a specific
+    model is used.
+
+    Args:
+        base_url: Base URL, e.g. 'http://localhost:1234/v1'.
+
+    Returns:
+        Tuple (is_reachable, error_message). If reachable — (True, None).
+    """
+    if not base_url or not base_url.strip():
+        return False, "Base URL is empty"
+
+    url = base_url.strip().rstrip("/")
+    try:
+        resp = requests.get(f"{url}/models", timeout=10)
+    except Exception as e:  # noqa: BLE001
+        return False, f"Network error: {e}"
+
+    if resp.status_code == 200:
+        return True, None
 
     return False, f"Unexpected response: {resp.status_code}"

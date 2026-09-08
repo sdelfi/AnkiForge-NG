@@ -8,7 +8,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ankiforge.config.manager import get_config, is_configured, save_config, validate_api_key
+from ankiforge.config.manager import (
+    get_config,
+    is_configured,
+    save_config,
+    validate_api_key,
+    validate_custom_endpoint,
+)
 from ankiforge.models import AddonConfig
 
 if TYPE_CHECKING:
@@ -209,6 +215,49 @@ class TestValidateApiKey:
     def test_valid_key_with_network_error(self) -> None:
         with patch("ankiforge.config.manager.requests.get", side_effect=Exception("connection error")):
             is_valid, error = validate_api_key("sk-or-v1-somekey")
+
+        assert is_valid is False
+        assert error is not None
+
+
+# ---------------------------------------------------------------------------
+# validate_custom_endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestValidateCustomEndpoint:
+    """Tests for validate_custom_endpoint() (LM Studio / OpenAI-compatible servers)."""
+
+    def test_empty_url_returns_false(self) -> None:
+        is_valid, error = validate_custom_endpoint("")
+        assert is_valid is False
+        assert error is not None
+
+    def test_reachable_endpoint_returns_true(self) -> None:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        with patch("ankiforge.config.manager.requests.get", return_value=mock_response) as mock_get:
+            is_valid, error = validate_custom_endpoint("http://localhost:1234/v1/")
+
+        assert is_valid is True
+        assert error is None
+        # Trailing slash stripped before building the /models URL.
+        mock_get.assert_called_once_with("http://localhost:1234/v1/models", timeout=10)
+
+    def test_unreachable_endpoint_returns_false(self) -> None:
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+
+        with patch("ankiforge.config.manager.requests.get", return_value=mock_response):
+            is_valid, error = validate_custom_endpoint("http://localhost:1234/v1")
+
+        assert is_valid is False
+        assert error is not None
+
+    def test_network_error_returns_false(self) -> None:
+        with patch("ankiforge.config.manager.requests.get", side_effect=Exception("connection refused")):
+            is_valid, error = validate_custom_endpoint("http://localhost:1234/v1")
 
         assert is_valid is False
         assert error is not None

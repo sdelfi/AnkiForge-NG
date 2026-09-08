@@ -26,10 +26,19 @@ class ModelPricing:
 
 @dataclass
 class Model:
-    """OpenRouter model."""
+    """A model available for generation, from OpenRouter or a custom endpoint.
+
+    Attributes:
+        id: Model ID as sent to the API. For custom-provider models this is
+            prefixed (see ankiforge.openrouter.routing_client.CUSTOM_PREFIX)
+            so the routing client knows which endpoint to call.
+        source: Where the model comes from — "openrouter" or "custom"
+            (e.g. LM Studio or another OpenAI-compatible server).
+    """
 
     id: str
     name: str
     pricing: ModelPricing = field(default_factory=ModelPricing)
     modalities: list[Modality] = field(default_factory=list)
     context_length: int = 0
+    source: str = "openrouter"
