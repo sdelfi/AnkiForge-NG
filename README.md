@@ -137,6 +137,15 @@ uv run ruff format src/ tests/   # format
 uv run mypy src/                 # type check
 ```
 
+### Releasing
+
+Bump `__version__` in `src/ankiforge/__init__.py`, merge into the `release`
+branch, and push — [.github/workflows/release.yml](.github/workflows/release.yml)
+builds the `.ankiaddon` and publishes it as a GitHub Release tagged `vX.Y.Z`.
+AnkiWeb has no upload API, so the new build still needs to be uploaded there
+by hand at https://ankiweb.net/shared/addons/ ("Share Add-on" → add a branch
+with the new version).
+
 ## Project Structure
 
 ```

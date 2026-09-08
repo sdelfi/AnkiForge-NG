@@ -1,0 +1,48 @@
+name: Release
+
+# Push to the `release` branch (e.g. after merging main into it) builds the
+# .ankiaddon package and publishes it as a GitHub Release tagged with the
+# version from src/ankiforge/__init__.py. AnkiWeb itself has no upload API —
+# the built .ankiaddon still needs to be uploaded there by hand, see
+# https://ankiweb.net/shared/addons/ ("Share Add-on" -> new branch/version).
+
+on:
+  push:
+    branches: [release]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Build .ankiaddon
+        id: build
+        run: |
+          uv run python scripts/build_ankiaddon.py
+          version=$(python3 -c "import re; print(re.search(r'__version__ = \"(.+?)\"', open('src/ankiforge/__init__.py').read()).group(1))")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "file=$(ls dist/*.ankiaddon)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.build.outputs.version }}
+          name: v${{ steps.build.outputs.version }}
+          files: ${{ steps.build.outputs.file }}
+          generate_release_notes: true
