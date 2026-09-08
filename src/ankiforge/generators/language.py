@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ankiforge.models import CardRequest, ModelPricingCache
-    from ankiforge.openrouter.client import OpenRouterClient
+    from ankiforge.openrouter.routing_client import GenerationClient
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -29,7 +29,9 @@ _DEFAULT_SYSTEM_PROMPT = (
     '  "example" — a vivid, memorable sentence that USES THE WORD (or its form) '
     "in context. Use a concrete, visual scenario — not abstract or generic. "
     "The word MUST appear in the sentence so the learner sees how it is used in real speech.\n"
-    '  "ipa" — IPA phonetic transcription in slashes, e.g. /wɜːrd/.\n\n'
+    '  "ipa" — IPA phonetic transcription, as a JSON string wrapped in double quotes, '
+    'e.g. "ipa": "/wɜːrd/". The slashes go INSIDE the quotes — never emit /wɜːrd/ '
+    "as a bare, unquoted value.\n\n"
     "Respond with ONLY valid JSON, no markdown fences, no extra text.\n\n"
     "Examples of GOOD output:\n"
     '  "eloquent" → definition: "Eloquent means able to express thoughts and feelings clearly '
@@ -65,6 +67,41 @@ _DETAILED_IMAGE_PROMPT_TEMPLATE = (
 _WAV_SAMPLE_RATE = 24000
 _WAV_CHANNELS = 1
 _WAV_BITS_PER_SAMPLE = 16
+
+# Some models emit the IPA transcription as a bare, unquoted value
+# (e.g. "ipa": /weɪt ɪn laɪn/ instead of "ipa": "/weɪt ɪn laɪn/"), which breaks
+# json.loads. Without a repair step this used to fall through to the crude
+# "first sentence / rest" fallback and swallow the whole response into
+# `definition`. This regex quotes a bare /.../ value that follows "ipa":.
+_IPA_UNQUOTED_RE = re.compile(r'("ipa"\s*:\s*)(/[^",}\]\n]*/)(?!")')
+
+# Field-level fallbacks used when the response isn't valid JSON even after
+# repair (e.g. it's missing a comma, or has stray text around the object).
+# These let us still recover the individual fields by regex instead of
+# falling back to a naive sentence split.
+_DEFINITION_FIELD_RE = re.compile(r'"definition"\s*:\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
+_EXAMPLE_FIELD_RE = re.compile(r'"example"\s*:\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
+_IPA_FIELD_RE = re.compile(r'"ipa"\s*:\s*"?(/[^",}\]\n]*/)"?')
+
+
+def _repair_json_like(text: str) -> str:
+    """Repair common LLM JSON malformations before handing text to json.loads.
+
+    Currently fixes: an unquoted IPA transcription value (bare /.../ instead
+    of a quoted JSON string).
+
+    Args:
+        text: Raw (possibly malformed) JSON text.
+
+    Returns:
+        Text with known malformations fixed. Safe to call on already-valid JSON.
+    """
+    return _IPA_UNQUOTED_RE.sub(lambda m: f'{m.group(1)}"{m.group(2)}"', text)
+
+
+def _unescape_json_string(text: str) -> str:
+    """Undo basic JSON string escaping (\\", \\n, \\\\) for regex-extracted field values."""
+    return text.replace('\\"', '"').replace("\\n", "\n").replace("\\\\", "\\")
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +172,7 @@ class LanguageGenerator:
 
     def __init__(
         self,
-        client: OpenRouterClient,
+        client: GenerationClient,
         text_model: str,
         audio_model: str,
         image_model: str,
@@ -326,6 +363,7 @@ class LanguageGenerator:
         try:
             # Strip markdown fences if present
             cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.strip())
+            cleaned = _repair_json_like(cleaned)
             data = json.loads(cleaned)
             if isinstance(data, dict):
                 return (
@@ -336,8 +374,37 @@ class LanguageGenerator:
         except (json.JSONDecodeError, ValueError):
             pass
 
-        # Fallback: legacy DEFINITION: / EXAMPLE: format
+        # Fallback: response still looks like a JSON object but isn't valid
+        # JSON for some other reason (missing comma, stray text, etc.) —
+        # recover the individual fields by regex rather than losing them all.
+        recovered = self._parse_json_fields_by_regex(response)
+        if recovered is not None:
+            return recovered
+
+        # Last resort: legacy DEFINITION: / EXAMPLE: text format
         return self._parse_text_response(response)
+
+    def _parse_json_fields_by_regex(self, response: str) -> tuple[str, str, str | None] | None:
+        """Recover definition/example/ipa directly by regex from a malformed JSON-like response.
+
+        Args:
+            response: Raw AI response text.
+
+        Returns:
+            Tuple (definition, example, ipa), or None if it doesn't look like
+            a JSON object with the expected fields at all.
+        """
+        def_match = _DEFINITION_FIELD_RE.search(response)
+        ex_match = _EXAMPLE_FIELD_RE.search(response)
+        if not def_match or not ex_match:
+            return None
+
+        ipa_match = _IPA_FIELD_RE.search(response)
+        ipa = ipa_match.group(1).strip() if ipa_match else None
+
+        definition = _unescape_json_string(def_match.group(1)).strip()
+        example = _unescape_json_string(ex_match.group(1)).strip()
+        return (definition, example, ipa or None)
 
     def _parse_text_response(self, response: str) -> tuple[str, str, str | None]:
         """Fallback parser for text format."""

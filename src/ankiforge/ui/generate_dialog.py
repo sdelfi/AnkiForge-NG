@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
     from ankiforge.models import LanguageOptions
     from ankiforge.openrouter.client import OpenRouterClient
+    from ankiforge.openrouter.routing_client import GenerationClient
 
     class _CardGenerator(Protocol):
         def generate(
@@ -360,7 +361,7 @@ def _add_help_icon(widget: object, tooltip: str) -> QWidget:
 def _create_generator(
     *,
     mode: GenerationMode,
-    client: OpenRouterClient,
+    client: GenerationClient,
     text_model: str,
     image_model: str,
     audio_model: str,
@@ -373,7 +374,9 @@ def _create_generator(
 
     Args:
         mode: Generation mode.
-        client: OpenRouter client.
+        client: Client used for generation — either a plain OpenRouterClient,
+            or a RoutingClient that also dispatches "custom::"-prefixed model
+            ids to a local/custom endpoint (LM Studio, Ollama, ...).
         text_model: Text model ID.
         image_model: Image model ID.
         audio_model: Audio model ID.
@@ -1458,11 +1461,15 @@ class InputDialog:
             return
 
         from ankiforge.openrouter.client import OpenRouterClient
+        from ankiforge.openrouter.routing_client import build_client
 
-        client = OpenRouterClient(api_key=config.api_key)
+        # Fetch up-to-date OpenRouter pricing from API (model may have changed).
+        # Only relevant for OpenRouter models — local/custom models are free,
+        # so pricing is simply left at 0 / None for them.
+        if config.api_key:
+            self._ensure_pricing(config, OpenRouterClient(api_key=config.api_key))
 
-        # Fetch up-to-date pricing from OpenRouter (model may have changed)
-        self._ensure_pricing(config, client)
+        client = build_client(config)
 
         # Count cards
         card_count = _count_input_items(

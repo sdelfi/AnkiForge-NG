@@ -117,3 +117,10 @@ class AddonConfig:
     audio_model_pricing: ModelPricingCache | None = None
     cached_balance: float | None = None
     cached_usage: float | None = None
+    # Custom OpenAI-compatible endpoint (e.g. LM Studio, Ollama, vLLM).
+    # When custom_base_url is set, text/image/audio model dropdowns can mix
+    # OpenRouter models with models served locally through this endpoint —
+    # see ankiforge.openrouter.routing_client.
+    custom_base_url: str = ""
+    custom_api_key: str = ""
+    custom_label: str = "Local"

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ankiforge.config.manager import get_config, save_config, validate_api_key
+from ankiforge.config.manager import get_config, save_config, validate_api_key, validate_custom_endpoint
 from ankiforge.models import AddonConfig
 from ankiforge.openrouter.models import Modality, Model
+from ankiforge.openrouter.routing_client import add_custom_prefix, is_custom_model
 from ankiforge.ui.styles import DIALOG_QSS
 
 if TYPE_CHECKING:
@@ -67,16 +68,22 @@ def _build_config_from_dialog_state(
     audio_model_id: str,
     language: str,
     models: list[Model] | None = None,
+    custom_base_url: str = "",
+    custom_api_key: str = "",
+    custom_label: str = "Local",
 ) -> AddonConfig:
     """Build AddonConfig from dialog values.
 
     Args:
-        api_key: API key.
-        text_model_id: Text model ID.
-        image_model_id: Image model ID.
-        audio_model_id: Audio model ID.
+        api_key: OpenRouter API key.
+        text_model_id: Text model ID (may be "custom::"-prefixed).
+        image_model_id: Image model ID (may be "custom::"-prefixed).
+        audio_model_id: Audio model ID (may be "custom::"-prefixed).
         language: Card language.
-        models: Loaded models for pricing extraction.
+        models: Loaded models (OpenRouter + custom) for pricing extraction.
+        custom_base_url: Base URL of a custom OpenAI-compatible endpoint (LM Studio, etc.), if any.
+        custom_api_key: API key for the custom endpoint, if it requires one.
+        custom_label: Display label for the custom endpoint in model dropdowns.
 
     Returns:
         Configured AddonConfig.
@@ -91,6 +98,9 @@ def _build_config_from_dialog_state(
         text_model_pricing=_extract_pricing(text_model_id, all_models),
         image_model_pricing=_extract_pricing(image_model_id, all_models),
         audio_model_pricing=_extract_pricing(audio_model_id, all_models),
+        custom_base_url=custom_base_url.strip(),
+        custom_api_key=custom_api_key.strip(),
+        custom_label=custom_label.strip() or "Local",
     )
 
 
@@ -118,20 +128,28 @@ def _make_searchable_combo() -> QComboBox:
     return combo
 
 
-def _populate_model_combo(combo: QComboBox, models: list[Model], current_id: str) -> None:
-    """Populate QComboBox with models.
+def _populate_model_combo(
+    combo: QComboBox, models: list[Model], current_id: str, *, custom_label: str = "Local"
+) -> None:
+    """Populate QComboBox with models from OpenRouter and/or a custom endpoint.
+
+    Custom-provider models (model.source == "custom") are visually tagged
+    with `custom_label` so they're easy to tell apart from OpenRouter models
+    in the same list.
 
     Args:
         combo: QComboBox to populate.
-        models: List of models.
-        current_id: ID of the currently selected model.
+        models: List of models (OpenRouter and/or custom, already deduplicated).
+        current_id: ID of the currently selected model (may be "custom::"-prefixed).
+        custom_label: Label shown next to custom-provider models, e.g. "LM Studio".
     """
     combo.clear()
     combo.addItem("— not selected —", "")
 
     selected_index = -1
     for i, model in enumerate(models):
-        combo.addItem(f"{model.name} ({model.id})", model.id)
+        tag = f" · {custom_label}" if model.source == "custom" else ""
+        combo.addItem(f"{model.name}{tag} ({model.id})", model.id)
         if model.id == current_id:
             selected_index = i + 1  # +1 for the empty element
 
@@ -233,7 +251,8 @@ class SettingsDialog:
         )
 
         self._mw = mw
-        self._models: list[Model] = []
+        self._models: list[Model] = []  # OpenRouter models
+        self._custom_models: list[Model] = []  # Custom-endpoint models (LM Studio, Ollama, ...)
 
         self._dialog = QDialog(mw)
         self._dialog.setWindowTitle("AnkiForge Settings")
@@ -278,6 +297,46 @@ class SettingsDialog:
         api_layout.addRow("", self._api_status_label)
 
         layout.addWidget(api_group)
+
+        # === Section 1b: Local / Custom API (LM Studio, Ollama, vLLM, ...) ===
+        custom_group = QGroupBox("Local / Custom API (LM Studio, Ollama, etc.)")
+        custom_layout = QFormLayout()
+        custom_layout.setSpacing(8)
+        custom_group.setLayout(custom_layout)
+
+        self._custom_base_url_input = QLineEdit()
+        self._custom_base_url_input.setPlaceholderText("http://localhost:1234/v1")
+        custom_layout.addRow("Base URL:", self._custom_base_url_input)
+
+        self._custom_api_key_input = QLineEdit()
+        self._custom_api_key_input.setPlaceholderText("optional — most local servers don't need one")
+        self._custom_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        custom_layout.addRow("API Key:", self._custom_api_key_input)
+
+        self._custom_label_input = QLineEdit()
+        self._custom_label_input.setPlaceholderText("Local")
+        self._custom_label_input.setToolTip("Shown next to this endpoint's models in the dropdowns below.")
+        custom_layout.addRow("Label:", self._custom_label_input)
+
+        custom_connect_row = QHBoxLayout()
+        custom_connect_btn = QPushButton("Connect")
+        custom_connect_btn.clicked.connect(self._on_connect_custom)
+        custom_connect_row.addWidget(custom_connect_btn)
+        custom_layout.addRow("", custom_connect_row)
+
+        self._custom_status_label = QLabel("")
+        self._custom_status_label.setWordWrap(True)
+        custom_layout.addRow("", self._custom_status_label)
+
+        hint = QLabel(
+            "Connect to pull the endpoint's model list into the dropdowns below. "
+            "To reference a model that isn't listed, type its id as custom::model-id."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: palette(placeholderText);")
+        custom_layout.addRow("", hint)
+
+        layout.addWidget(custom_group)
 
         # === Section 2: Models ===
         models_group = QGroupBox("Models")
@@ -342,6 +401,9 @@ class SettingsDialog:
         """Load current configuration into dialog fields."""
         config = get_config()
         self._api_key_input.setText(config.api_key)
+        self._custom_base_url_input.setText(config.custom_base_url)
+        self._custom_api_key_input.setText(config.custom_api_key)
+        self._custom_label_input.setText(config.custom_label)
 
         # Show cached values
         if config.cached_usage is not None:
@@ -349,12 +411,14 @@ class SettingsDialog:
         if config.cached_balance is not None:
             self._remaining_label.setText(f"${config.cached_balance:.2f}")
 
-        # Models — try to load if API key is present
+        # Models — try to load if configured
         if config.api_key:
             self._load_models_silent(config)
+        if config.custom_base_url:
+            self._load_custom_models_silent(config)
 
     def _load_models_silent(self, config: AddonConfig) -> None:
-        """Load models without showing errors (for initialization)."""
+        """Load OpenRouter models without showing errors (for initialization)."""
         try:
             from ankiforge.openrouter.client import OpenRouterClient
 
@@ -366,15 +430,49 @@ class SettingsDialog:
         except Exception:  # noqa: BLE001
             pass
 
-    def _populate_combos(self, config: AddonConfig) -> None:
-        """Populate comboboxes with models."""
-        text_models = _filter_models_by_modality(self._models, Modality.TEXT)
-        image_models = _filter_models_by_modality(self._models, Modality.IMAGE)
-        audio_models = _filter_models_by_modality(self._models, Modality.AUDIO)
+    def _load_custom_models_silent(self, config: AddonConfig) -> None:
+        """Load models from the custom/local endpoint without showing errors (for initialization)."""
+        try:
+            self._custom_models = self._fetch_custom_models(config.custom_base_url, config.custom_api_key)
+            self._populate_combos(config)
+            count = len(self._custom_models)
+            _set_status(self._custom_status_label, f"Connected, loaded {count} models", ok=True)
+        except Exception:  # noqa: BLE001
+            pass
 
-        _populate_model_combo(self._text_model_combo, text_models, config.text_model)
-        _populate_model_combo(self._image_model_combo, image_models, config.image_model)
-        _populate_model_combo(self._audio_model_combo, audio_models, config.audio_model)
+    @staticmethod
+    def _fetch_custom_models(base_url: str, api_key: str) -> list[Model]:
+        """Fetch and tag models from a custom OpenAI-compatible endpoint.
+
+        Args:
+            base_url: Base URL of the custom endpoint, e.g. 'http://localhost:1234/v1'.
+            api_key: API key for the endpoint (may be empty — most local servers don't need one).
+
+        Returns:
+            Models with "custom::"-prefixed IDs and source="custom", ready to
+            merge into the same dropdowns as OpenRouter models. Modalities
+            default to TEXT since most local servers (LM Studio, Ollama)
+            only expose text/chat models and don't report modality info.
+        """
+        from dataclasses import replace
+
+        from ankiforge.openrouter.client import OpenRouterClient
+
+        client = OpenRouterClient(api_key=api_key or "lm-studio", base_url=base_url.strip().rstrip("/"))
+        raw_models = client.fetch_models(default_modalities=[Modality.TEXT], source="custom")
+        return [replace(m, id=add_custom_prefix(m.id)) for m in raw_models]
+
+    def _populate_combos(self, config: AddonConfig) -> None:
+        """Populate comboboxes with OpenRouter + custom-endpoint models, merged by modality."""
+        all_models = self._models + self._custom_models
+        text_models = _filter_models_by_modality(all_models, Modality.TEXT)
+        image_models = _filter_models_by_modality(all_models, Modality.IMAGE)
+        audio_models = _filter_models_by_modality(all_models, Modality.AUDIO)
+
+        label = config.custom_label or "Local"
+        _populate_model_combo(self._text_model_combo, text_models, config.text_model, custom_label=label)
+        _populate_model_combo(self._image_model_combo, image_models, config.image_model, custom_label=label)
+        _populate_model_combo(self._audio_model_combo, audio_models, config.audio_model, custom_label=label)
 
     def _on_connect(self) -> None:
         """Connect button handler — validate key + load models."""
@@ -400,6 +498,28 @@ class SettingsDialog:
             _set_status(self._api_status_label, f"Connected, loaded {count} models", ok=True)
         except Exception as e:  # noqa: BLE001
             _set_status(self._api_status_label, f"Failed to load models: {e}", ok=False)
+
+    def _on_connect_custom(self) -> None:
+        """Connect button handler for the local/custom endpoint — validate + load models."""
+        base_url = self._custom_base_url_input.text().strip()
+        api_key = self._custom_api_key_input.text().strip()
+
+        is_reachable, error = validate_custom_endpoint(base_url)
+        if not is_reachable:
+            _set_status(self._custom_status_label, f"Error: {error}", ok=False)
+            return
+
+        try:
+            _set_status(self._custom_status_label, "Loading models...", ok=True)
+            self._custom_models = self._fetch_custom_models(base_url, api_key)
+
+            config = get_config()
+            self._populate_combos(config)
+
+            count = len(self._custom_models)
+            _set_status(self._custom_status_label, f"Connected, loaded {count} models", ok=True)
+        except Exception as e:  # noqa: BLE001
+            _set_status(self._custom_status_label, f"Failed to load models: {e}", ok=False)
 
     def _on_refresh_balance(self) -> None:
         """Fetch balance from OpenRouter API and update UI + cache."""
@@ -433,25 +553,56 @@ class SettingsDialog:
             self._usage_label.setText(f"error ({e})")
             self._remaining_label.setText("—")
 
-    def _validate_custom_models(self) -> str | None:
-        """Validate custom models (entered manually) via API.
+    def _validate_manually_typed_models(self) -> str | None:
+        """Validate models that were typed manually rather than picked from a dropdown.
+
+        Two cases:
+        - A plain id not in the fetched OpenRouter list — verified against
+          OpenRouter (requires an OpenRouter API key).
+        - A "custom::"-prefixed id not in the fetched custom-endpoint list —
+          verified against the configured local/custom endpoint (no API key
+          required, but the endpoint must be configured).
 
         Returns:
-            Error message or None if everything is ok.
+            Error message, or None if everything is ok.
         """
         combos = {
             "Text": self._text_model_combo,
             "Image": self._image_model_combo,
             "Audio": self._audio_model_combo,
         }
-        known_ids = {m.id for m in self._models}
+        known_openrouter_ids = {m.id for m in self._models}
+        known_custom_ids = {m.id for m in self._custom_models}
 
         for label, combo in combos.items():
             model_id = _get_selected_model_id(combo)
-            if not model_id or model_id in known_ids:
+            if not model_id:
                 continue
 
-            # Custom model — verify existence via API
+            if is_custom_model(model_id):
+                if model_id in known_custom_ids:
+                    continue
+
+                base_url = self._custom_base_url_input.text().strip()
+                if not base_url:
+                    return f"{label} model '{model_id}' not found, and no local/custom API endpoint is configured"
+
+                try:
+                    api_key = self._custom_api_key_input.text().strip()
+                    found_models = self._fetch_custom_models(base_url, api_key)
+                    found = next((m for m in found_models if m.id == model_id), None)
+                    if found is None:
+                        return f"{label} model not found on the local/custom endpoint: '{model_id}'"
+                    if found not in self._custom_models:
+                        self._custom_models.append(found)
+                except Exception as e:  # noqa: BLE001
+                    return f"Error validating model '{model_id}': {e}"
+                continue
+
+            if model_id in known_openrouter_ids:
+                continue
+
+            # Plain OpenRouter model id — verify existence via API
             api_key = self._api_key_input.text().strip()
             if not api_key:
                 return f"{label} model '{model_id}' not found in the list, and no API key provided"
@@ -475,9 +626,8 @@ class SettingsDialog:
         return None
 
     def _on_accept(self) -> None:
-        """OK button handler — validate custom models + save."""
-        # Validate custom models
-        error = self._validate_custom_models()
+        """OK button handler — validate manually-typed models + save."""
+        error = self._validate_manually_typed_models()
         if error:
             from aqt.qt import QMessageBox
 
@@ -490,7 +640,10 @@ class SettingsDialog:
             image_model_id=_get_selected_model_id(self._image_model_combo),
             audio_model_id=_get_selected_model_id(self._audio_model_combo),
             language=get_config().language,
-            models=self._models,
+            models=self._models + self._custom_models,
+            custom_base_url=self._custom_base_url_input.text(),
+            custom_api_key=self._custom_api_key_input.text(),
+            custom_label=self._custom_label_input.text(),
         )
         save_config(config)
         self._dialog.accept()

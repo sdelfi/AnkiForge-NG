@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ankiforge.models import CardRequest
-    from ankiforge.openrouter.client import OpenRouterClient
+    from ankiforge.openrouter.routing_client import GenerationClient
 
 _SYSTEM_PROMPT = (
     "You are a knowledgeable assistant creating flashcard answers. "
@@ -27,7 +27,7 @@ class AudioGenerator:
 
     def __init__(
         self,
-        client: OpenRouterClient,
+        client: GenerationClient,
         text_model: str,
         audio_model: str,
         voice: str = "alloy",

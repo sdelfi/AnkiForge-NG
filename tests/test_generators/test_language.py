@@ -165,6 +165,36 @@ class TestParseJsonResponse:
         assert example == "Eat it."
         assert ipa is None
 
+    def test_repairs_unquoted_ipa(self, generator: LanguageGenerator) -> None:
+        """Regression test: some models emit "ipa": /x/ without quotes,
+        which used to break json.loads and swallow the whole response into
+        `definition` via the naive sentence-split fallback."""
+        response = (
+            '{ "definition": "To wait in line means to stand in a queue or line, '
+            'waiting for your turn to do something.", "example": "We had to wait in '
+            "line for an hour to get tickets to the concert, but the excitement made "
+            'it worth it.", "ipa": /weɪt ɪn laɪn/ }'
+        )
+        definition, example, ipa = generator._parse_json_response(response)
+        assert definition == "To wait in line means to stand in a queue or line, waiting for your turn to do something."
+        assert example == (
+            "We had to wait in line for an hour to get tickets to the concert, but the excitement made it worth it."
+        )
+        assert ipa == "/weɪt ɪn laɪn/"
+
+    def test_recovers_fields_when_json_otherwise_malformed(self, generator: LanguageGenerator) -> None:
+        """Even if JSON repair doesn't fully fix the response (e.g. a missing
+        comma), individual fields should still be recovered by regex instead
+        of falling back to a naive sentence split."""
+        response = '{ "definition": "A round fruit" "example": "I eat an apple.", "ipa": "/ˈæpəl/" }'
+        definition, example, ipa = generator._parse_json_response(response)
+        assert definition == "A round fruit"
+        assert example == "I eat an apple."
+        assert ipa == "/ˈæpəl/"
+
+    def test_field_regex_fallback_returns_none_without_expected_keys(self, generator: LanguageGenerator) -> None:
+        assert generator._parse_json_fields_by_regex("just some plain text, no JSON at all.") is None
+
 
 # ---------------------------------------------------------------------------
 # Card generation — one JSON request per text
