@@ -127,7 +127,7 @@ AnkiForge is **free**. You only pay for AI usage through OpenRouter.
 ## Development
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/AnkiForge-NG.git
+git clone https://github.com/sdelfi/AnkiForge-NG.git
 cd AnkiForge-NG
 
 uv sync                          # install dependencies
