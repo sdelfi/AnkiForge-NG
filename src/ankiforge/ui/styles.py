@@ -32,6 +32,49 @@ def get_dialog_size(
     return w, h
 
 
+def get_adaptive_dialog_size(
+    content_widget: object,
+    *,
+    extra_height: int = 110,
+    width_pct: float = 0.4,
+    min_w: int = 480,
+    max_height_pct: float = 0.85,
+    min_h: int = 400,
+) -> tuple[int, int]:
+    """Calculate dialog size: fixed-percentage width, height fit to content.
+
+    Sizes the dialog tall enough for `content_widget`'s natural height so it
+    doesn't need to scroll unless the screen itself is too small, while still
+    capping it at `max_height_pct` of the available screen height.
+
+    Args:
+        content_widget: Widget placed inside the dialog's scroll area — its
+            sizeHint() drives the height calculation.
+        extra_height: Extra vertical space to reserve outside the scroll
+            area (button row, margins, etc.).
+        width_pct: Screen width fraction for dialog width.
+        min_w: Minimum width.
+        max_height_pct: Maximum screen height fraction the dialog may use.
+        min_h: Minimum height.
+
+    Returns:
+        (width, height) in pixels.
+    """
+    from aqt.qt import QApplication
+
+    screen = QApplication.primaryScreen()
+    if screen is not None:
+        geom = screen.availableGeometry()
+        w = max(int(geom.width() * width_pct), min_w)
+        max_h = int(geom.height() * max_height_pct)
+    else:
+        w, max_h = min_w, min_h
+
+    natural_h = content_widget.sizeHint().height() + extra_height  # type: ignore[attr-defined]
+    h = min(max(natural_h, min_h), max_h)
+    return w, h
+
+
 def wrap_in_scroll_area(content_widget: object) -> object:
     """Wrap widget in QScrollArea with vertical scrolling.
 
