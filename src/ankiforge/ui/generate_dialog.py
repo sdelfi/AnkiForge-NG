@@ -910,7 +910,7 @@ class InputDialog:
             QWidget as _QWidget,
         )
 
-        from ankiforge.ui.styles import get_dialog_size, wrap_in_scroll_area
+        from ankiforge.ui.styles import get_adaptive_dialog_size, wrap_in_scroll_area
 
         self._mw = mw
         self._mode = mode
@@ -1240,8 +1240,10 @@ class InputDialog:
 
         dialog_layout.addLayout(buttons_layout)
 
-        # Scale to screen size
-        w, h = get_dialog_size(width_pct=0.4, height_pct=0.65, min_w=520, min_h=450)
+        # Scale to screen size — width is 30% narrower than the old fixed
+        # 0.4/520 sizing, height auto-fits the content so the scroll area
+        # only kicks in when the screen itself is too small.
+        w, h = get_adaptive_dialog_size(content, width_pct=0.28, min_w=420, min_h=420, max_height_pct=0.85)
         self._dialog.resize(w, h)
 
         self._go_back = False
