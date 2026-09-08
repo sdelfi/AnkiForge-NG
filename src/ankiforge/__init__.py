@@ -1,6 +1,9 @@
-"""AnkiForge — AI-powered flashcard generation for Anki via OpenRouter."""
+"""AnkiForge NG — fork of AnkiForge with local/custom API support and fixes.
 
-__version__ = "0.1.1"
+Fork of AnkiForge (https://github.com/Xpom1/AnkiForge) by Xpom1, GPL-3.0.
+"""
+
+__version__ = "0.2.0"
 
 
 def _register_addon() -> None:

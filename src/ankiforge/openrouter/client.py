@@ -534,8 +534,26 @@ class OpenRouterClient:
             "is_unlimited": is_unlimited,
         }
 
-    def fetch_models(self) -> list[Model]:
-        """Fetch the list of models from the OpenRouter API.
+    def fetch_models(
+        self,
+        *,
+        default_modalities: list[Modality] | None = None,
+        source: str = "openrouter",
+    ) -> list[Model]:
+        """Fetch the list of models from the API's /models endpoint.
+
+        Works against OpenRouter and against any OpenAI-compatible server
+        (e.g. LM Studio, Ollama, vLLM) that implements GET /models — those
+        typically don't return `pricing`/`architecture`, so pricing is left
+        at 0 and modalities fall back to `default_modalities` when present.
+
+        Args:
+            default_modalities: Modalities to assume when a model item has
+                no `architecture.modality` info (as with most local/custom
+                OpenAI-compatible servers). OpenRouter always provides this,
+                so leave as None for OpenRouter.
+            source: Tag stored on each returned Model ("openrouter" or
+                "custom"), used by the settings UI to label/group models.
 
         Returns:
             Typed list of models with pricing and modalities.
@@ -559,14 +577,19 @@ class OpenRouterClient:
 
         models: list[Model] = []
         for item in data.get("data", []):
-            models.append(self._parse_model_item(item))
+            models.append(self._parse_model_item(item, default_modalities=default_modalities, source=source))
 
         self._models_cache = models
         self._models_cache_time = time.time()
         return models
 
     @staticmethod
-    def _parse_model_item(item: dict[str, object]) -> Model:
+    def _parse_model_item(
+        item: dict[str, object],
+        *,
+        default_modalities: list[Modality] | None = None,
+        source: str = "openrouter",
+    ) -> Model:
         """Parse a single item from the /models response."""
 
         pricing_raw = item.get("pricing", {})
@@ -582,9 +605,11 @@ class OpenRouterClient:
         assert isinstance(arch, dict)
         modality_str = str(arch.get("modality", ""))
         modalities = _parse_modalities(modality_str)
+        if not modalities and default_modalities:
+            modalities = list(default_modalities)
 
         model_id = str(item.get("id", ""))
-        model_name = str(item.get("name", ""))
+        model_name = str(item.get("name", "")) or model_id
         raw_ctx = item.get("context_length", 0)
         context_length = int(raw_ctx) if isinstance(raw_ctx, (int, float, str)) else 0
 
@@ -594,6 +619,7 @@ class OpenRouterClient:
             pricing=pricing,
             modalities=modalities,
             context_length=context_length,
+            source=source,
         )
 
     def estimate_cost(

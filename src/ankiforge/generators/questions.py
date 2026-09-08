@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ankiforge.models import CardRequest
-    from ankiforge.openrouter.client import OpenRouterClient
+    from ankiforge.openrouter.routing_client import GenerationClient
 
 _SYSTEM_PROMPT = (
     "You are a knowledgeable assistant creating flashcard answers. "
@@ -25,7 +25,7 @@ _SYSTEM_PROMPT = (
 class QuestionsGenerator:
     """QA card generator from a list of questions."""
 
-    def __init__(self, client: OpenRouterClient, model: str) -> None:
+    def __init__(self, client: GenerationClient, model: str) -> None:
         self._client = client
         self._model = model
 

@@ -43,7 +43,7 @@ def build() -> Path:
     version = get_version()
     DIST.mkdir(exist_ok=True)
 
-    output = DIST / f"AnkiForge_v{version}.ankiaddon"
+    output = DIST / f"AnkiForgeNG_v{version}.ankiaddon"
 
     # Thin entry point that adds addon dir to sys.path so `from ankiforge.xxx` works
     entry_point = (

@@ -1,9 +1,9 @@
 {
-    "package": "AnkiForge",
-    "name": "AnkiForge",
+    "package": "AnkiForgeNG",
+    "name": "AnkiForge NG",
     "mod": 0,
     "conflicts": [],
     "min_point_version": 231000,
     "max_point_version": 0,
-    "homepage": "https://github.com/Xpom1/AnkiForge"
+    "homepage": "https://github.com/YOUR_USERNAME/AnkiForge-NG"
 }

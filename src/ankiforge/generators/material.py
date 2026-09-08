@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ankiforge.models import CardRequest
-    from ankiforge.openrouter.client import OpenRouterClient
+    from ankiforge.openrouter.routing_client import GenerationClient
 
 _MIN_PARAGRAPH_LEN = 10
 _MAX_HEADING_LEN = 150
@@ -131,7 +131,7 @@ class MaterialGenerator:
 
     def __init__(
         self,
-        client: OpenRouterClient,
+        client: GenerationClient,
         text_model: str,
         image_model: str | None = None,
         image_size: str = "auto",
