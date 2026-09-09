@@ -18,12 +18,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Union
 
+from ankiforge.local_image.client import build_local_image_client
 from ankiforge.openrouter.client import OpenRouterClient
 
 if TYPE_CHECKING:
+    from ankiforge.local_image.client import LocalImageClient
     from ankiforge.models import AddonConfig
 
 CUSTOM_PREFIX = "custom::"
+LOCAL_IMAGE_PREFIX = "local-image::"
+LOCAL_IMAGE_MODEL_ID = f"{LOCAL_IMAGE_PREFIX}generate"
 
 # Shared alias for generator classes: either a plain OpenRouterClient, or a
 # RoutingClient that also dispatches "custom::"-prefixed model ids to a
@@ -51,6 +55,11 @@ def add_custom_prefix(model_id: str) -> str:
     return model_id if is_custom_model(model_id) else f"{CUSTOM_PREFIX}{model_id}"
 
 
+def is_local_image_model(model_id: str) -> bool:
+    """Return True if a stored model id refers to the local image generation backend."""
+    return model_id.startswith(LOCAL_IMAGE_PREFIX)
+
+
 class RoutingClient:
     """Dispatches text/audio/image generation to OpenRouter or a custom endpoint.
 
@@ -63,6 +72,7 @@ class RoutingClient:
         self,
         openrouter_client: OpenRouterClient | None,
         custom_client: OpenRouterClient | None,
+        local_image_client: LocalImageClient | None = None,
     ) -> None:
         """Create a routing client.
 
@@ -71,9 +81,12 @@ class RoutingClient:
                 OpenRouter API key is configured.
             custom_client: Client for the custom/local endpoint, or None if
                 none is configured.
+            local_image_client: Client for local image generation
+                (Automatic1111/ComfyUI), or None if none is configured.
         """
         self._or_client = openrouter_client
         self._custom_client = custom_client
+        self._local_image_client = local_image_client
         self._last_used: OpenRouterClient | None = None
 
     def _resolve(self, model: str) -> tuple[OpenRouterClient, str]:
@@ -121,7 +134,20 @@ class RoutingClient:
         return result
 
     def generate_image(self, prompt: str, model: str, *, size: str | None = None) -> bytes:
-        """Generate an image, routed to the right endpoint. See OpenRouterClient.generate_image."""
+        """Generate an image, routed to the right endpoint. See OpenRouterClient.generate_image.
+
+        A "local-image::"-prefixed model routes to the local image backend
+        (Automatic1111/ComfyUI) instead of OpenRouter/custom — it's free, so
+        last_cost/last_usage reset to their zero defaults afterwards.
+        """
+        if is_local_image_model(model):
+            if self._local_image_client is None:
+                msg = "No local image backend is configured (set it in AnkiForge Settings)"
+                raise ValueError(msg)
+            result = self._local_image_client.generate_image(prompt, size=size)
+            self._last_used = None
+            return result
+
         client, raw_model = self._resolve(model)
         result = client.generate_image(prompt, raw_model, size=size)
         self._last_used = client
@@ -157,4 +183,6 @@ def build_client(config: AddonConfig) -> RoutingClient:
             base_url=config.custom_base_url.rstrip("/"),
         )
 
-    return RoutingClient(or_client, custom_client)
+    local_image_client = build_local_image_client(config)
+
+    return RoutingClient(or_client, custom_client, local_image_client)

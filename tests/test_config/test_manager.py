@@ -101,6 +101,30 @@ class TestGetConfig:
 
         assert config.api_key == ""
 
+    def test_reads_local_image_fields(self, mock_mw: MagicMock) -> None:
+        mock_mw.addonManager.getConfig.return_value = {
+            "local_image_backend": "comfyui",
+            "local_image_url": "http://127.0.0.1:8188",
+            "local_image_checkpoint": "sd_xl_turbo.safetensors",
+        }
+
+        with patch("ankiforge.config.manager._get_mw", return_value=mock_mw):
+            config = get_config()
+
+        assert config.local_image_backend == "comfyui"
+        assert config.local_image_url == "http://127.0.0.1:8188"
+        assert config.local_image_checkpoint == "sd_xl_turbo.safetensors"
+
+    def test_local_image_fields_default_empty(self, mock_mw: MagicMock) -> None:
+        mock_mw.addonManager.getConfig.return_value = {"api_key": "sk-or-key"}
+
+        with patch("ankiforge.config.manager._get_mw", return_value=mock_mw):
+            config = get_config()
+
+        assert config.local_image_backend == ""
+        assert config.local_image_url == ""
+        assert config.local_image_checkpoint == ""
+
 
 # ---------------------------------------------------------------------------
 # save_config

@@ -124,3 +124,10 @@ class AddonConfig:
     custom_base_url: str = ""
     custom_api_key: str = ""
     custom_label: str = "Local"
+    # Local image generation (Automatic1111 / ComfyUI) — a separate route from
+    # custom_base_url above, since neither speaks the OpenAI /chat/completions
+    # format. See ankiforge.local_image.client and
+    # ankiforge.openrouter.routing_client.LOCAL_IMAGE_MODEL_ID.
+    local_image_backend: str = ""  # "", "automatic1111", or "comfyui"
+    local_image_url: str = ""
+    local_image_checkpoint: str = ""  # ComfyUI only — checkpoint (.safetensors) filename

@@ -4,6 +4,7 @@
 >
 > This fork adds:
 > - Support for local/custom OpenAI-compatible APIs (LM Studio, Ollama, vLLM, ...) alongside OpenRouter — mix and match models per slot (text/image/audio).
+> - Free, fully offline **image generation** via a local Automatic1111 (stable-diffusion-webui) or ComfyUI server — pick a backend in Settings and select "Local Stable Diffusion" as the Image model.
 > - A fix for a JSON-parsing bug where an unquoted IPA value could corrupt the generated definition/example fields.
 
 **AI-powered flashcard generation for Anki** — create high-quality cards in seconds using any LLM via [OpenRouter](https://openrouter.ai/) or a local model server.
@@ -35,6 +36,7 @@ It works with **any model** available on OpenRouter (GPT-4o, Claude, Gemini, Lla
 
 - **Any LLM model** — pick from 200+ models on OpenRouter, from free to state-of-the-art
 - **Local models too** — point any dropdown at LM Studio, Ollama, or another OpenAI-compatible server for free, private generation
+- **Local image generation** — generate illustrations for free with a local Automatic1111 or ComfyUI server, no API cost per image
 - **Cost estimation** — see the price before generating, track actual spending in real time
 - **Custom prompts** — tweak AI instructions for any mode to fit your study style
 - **Code highlighting** — cards render code blocks with syntax highlighting via highlight.js

@@ -202,6 +202,38 @@ class TestBuildConfigFromDialogState:
         )
         assert config.api_key == "sk-or-key"
 
+    def test_includes_local_image_fields(self) -> None:
+        from ankiforge.config.dialog import _build_config_from_dialog_state
+
+        config = _build_config_from_dialog_state(
+            api_key="sk-or-key",
+            text_model_id="",
+            image_model_id="local-image::generate",
+            audio_model_id="",
+            language="en",
+            local_image_backend="comfyui",
+            local_image_url="  http://127.0.0.1:8188  ",
+            local_image_checkpoint="  sd_xl_turbo.safetensors  ",
+        )
+        assert config.image_model == "local-image::generate"
+        assert config.local_image_backend == "comfyui"
+        assert config.local_image_url == "http://127.0.0.1:8188"
+        assert config.local_image_checkpoint == "sd_xl_turbo.safetensors"
+
+    def test_local_image_fields_default_empty(self) -> None:
+        from ankiforge.config.dialog import _build_config_from_dialog_state
+
+        config = _build_config_from_dialog_state(
+            api_key="sk-or-key",
+            text_model_id="",
+            image_model_id="",
+            audio_model_id="",
+            language="en",
+        )
+        assert config.local_image_backend == ""
+        assert config.local_image_url == ""
+        assert config.local_image_checkpoint == ""
+
 
 # ---------------------------------------------------------------------------
 # populate_model_combo
@@ -329,6 +361,66 @@ class TestExtractPricing:
 
         result = _extract_pricing("", sample_models)
         assert result is None
+
+
+class TestLocalImageModelEntry:
+    """Tests for the synthetic 'Local Stable Diffusion' Image model entry."""
+
+    def test_none_when_no_backend(self) -> None:
+        from ankiforge.config.dialog import SettingsDialog
+
+        assert SettingsDialog._local_image_model_entry(AddonConfig()) is None
+
+    def test_none_when_backend_set_but_no_url(self) -> None:
+        from ankiforge.config.dialog import SettingsDialog
+
+        config = AddonConfig(local_image_backend="automatic1111")
+        assert SettingsDialog._local_image_model_entry(config) is None
+
+    def test_entry_for_automatic1111(self) -> None:
+        from ankiforge.config.dialog import SettingsDialog
+        from ankiforge.openrouter.routing_client import LOCAL_IMAGE_MODEL_ID
+
+        config = AddonConfig(local_image_backend="automatic1111", local_image_url="http://127.0.0.1:7860")
+        entry = SettingsDialog._local_image_model_entry(config)
+
+        assert entry is not None
+        assert entry.id == LOCAL_IMAGE_MODEL_ID
+        assert entry.source == "local-image"
+        assert Modality.IMAGE in entry.modalities
+
+    def test_none_for_comfyui_without_checkpoint(self) -> None:
+        from ankiforge.config.dialog import SettingsDialog
+
+        config = AddonConfig(local_image_backend="comfyui", local_image_url="http://127.0.0.1:8188")
+        assert SettingsDialog._local_image_model_entry(config) is None
+
+    def test_entry_for_comfyui_with_checkpoint(self) -> None:
+        from ankiforge.config.dialog import SettingsDialog
+
+        config = AddonConfig(
+            local_image_backend="comfyui",
+            local_image_url="http://127.0.0.1:8188",
+            local_image_checkpoint="sd_xl_turbo.safetensors",
+        )
+        assert SettingsDialog._local_image_model_entry(config) is not None
+
+
+class TestPopulateModelComboLocalImageTag:
+    def test_tags_local_image_source(self) -> None:
+        from ankiforge.config.dialog import _populate_model_combo
+        from ankiforge.openrouter.routing_client import LOCAL_IMAGE_MODEL_ID
+
+        combo = MagicMock()
+        entry = Model(
+            id=LOCAL_IMAGE_MODEL_ID,
+            name="Local Stable Diffusion",
+            modalities=[Modality.IMAGE],
+            source="local-image",
+        )
+        _populate_model_combo(combo, [entry], current_id="")
+
+        combo.addItem.assert_any_call(f"Local Stable Diffusion · Local ({LOCAL_IMAGE_MODEL_ID})", LOCAL_IMAGE_MODEL_ID)
 
 
 class TestSettingsDialogImport:
