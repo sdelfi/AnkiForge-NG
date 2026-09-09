@@ -93,6 +93,7 @@ def _dict_to_config(data: dict[str, object] | None) -> AddonConfig:
         local_image_backend=str(data.get("local_image_backend", defaults.local_image_backend)),
         local_image_url=str(data.get("local_image_url", defaults.local_image_url)),
         local_image_checkpoint=str(data.get("local_image_checkpoint", defaults.local_image_checkpoint)),
+        local_image_resolution=str(data.get("local_image_resolution", defaults.local_image_resolution)),
     )
 
 

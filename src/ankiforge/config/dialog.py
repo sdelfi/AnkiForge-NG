@@ -20,6 +20,12 @@ _LOCAL_IMAGE_URL_PLACEHOLDERS = {
     "automatic1111": "http://127.0.0.1:7860",
     "comfyui": "http://127.0.0.1:8188",
 }
+_LOCAL_IMAGE_RESOLUTIONS = [
+    ("auto", "Auto (detect SDXL from checkpoint name — ComfyUI only)"),
+    ("512", "512×512 (SD 1.5)"),
+    ("768", "768×768"),
+    ("1024", "1024×1024 (SDXL)"),
+]
 
 if TYPE_CHECKING:
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
@@ -85,6 +91,7 @@ def _build_config_from_dialog_state(
     local_image_backend: str = "",
     local_image_url: str = "",
     local_image_checkpoint: str = "",
+    local_image_resolution: str = "auto",
 ) -> AddonConfig:
     """Build AddonConfig from dialog values.
 
@@ -101,6 +108,7 @@ def _build_config_from_dialog_state(
         local_image_backend: "", "automatic1111", or "comfyui".
         local_image_url: Base URL of the local image generation backend, if any.
         local_image_checkpoint: Checkpoint filename (ComfyUI only).
+        local_image_resolution: "auto", "512", "768", or "1024".
 
     Returns:
         Configured AddonConfig.
@@ -121,6 +129,7 @@ def _build_config_from_dialog_state(
         local_image_backend=local_image_backend,
         local_image_url=local_image_url.strip(),
         local_image_checkpoint=local_image_checkpoint.strip(),
+        local_image_resolution=local_image_resolution,
     )
 
 
@@ -384,6 +393,18 @@ class SettingsDialog:
         self._local_image_checkpoint_input.setPlaceholderText("e.g. sd_xl_turbo_1.0.safetensors")
         local_image_layout.addRow(self._local_image_checkpoint_label, self._local_image_checkpoint_input)
 
+        self._local_image_resolution_combo = QComboBox()
+        for value, display_name in _LOCAL_IMAGE_RESOLUTIONS:
+            self._local_image_resolution_combo.addItem(display_name, value)
+        self._local_image_resolution_combo.setToolTip(
+            "Generating below a checkpoint's native resolution (SDXL needs ~1024px) "
+            "produces a tiled, fractured-looking image instead of just less detail. "
+            "'Auto' guesses from the checkpoint filename — set this explicitly if "
+            "that guesses wrong, or if you're on Automatic1111 (no checkpoint info "
+            "available to guess from there)."
+        )
+        local_image_layout.addRow("Resolution:", self._local_image_resolution_combo)
+
         local_image_connect_row = QHBoxLayout()
         local_image_connect_btn = QPushButton("Test connection")
         local_image_connect_btn.clicked.connect(self._on_test_local_image)
@@ -479,6 +500,11 @@ class SettingsDialog:
         self._local_image_backend_combo.setCurrentIndex(backend_index)
         self._local_image_url_input.setText(config.local_image_url)
         self._local_image_checkpoint_input.setText(config.local_image_checkpoint)
+        resolution_index = next(
+            (i for i, (value, _) in enumerate(_LOCAL_IMAGE_RESOLUTIONS) if value == config.local_image_resolution),
+            0,
+        )
+        self._local_image_resolution_combo.setCurrentIndex(resolution_index)
         self._update_local_image_visibility()
 
         # Show cached values
@@ -793,6 +819,7 @@ class SettingsDialog:
             local_image_backend=self._local_image_backend_combo.currentData() or "",
             local_image_url=self._local_image_url_input.text(),
             local_image_checkpoint=self._local_image_checkpoint_input.text(),
+            local_image_resolution=self._local_image_resolution_combo.currentData() or "auto",
         )
         save_config(config)
         self._dialog.accept()

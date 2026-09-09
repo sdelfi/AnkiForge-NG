@@ -40,19 +40,46 @@ _DEFAULT_NEGATIVE_PROMPT = "text, watermark, signature, low quality, blurry"
 _COMFYUI_POLL_INTERVAL = 1.0
 _SEED_MAX = 2**32 - 1
 
-# Rough size presets — local diffusion models are usually happiest at 512-768px
-# per side; there's no per-provider "size" enum to map onto like OpenRouter has.
-_SIZE_PRESETS: dict[str, tuple[int, int]] = {
-    "auto": (512, 512),
-    "square": (512, 512),
-    "portrait": (512, 768),
-    "landscape": (768, 512),
+# SDXL-family checkpoints are trained at ~1024px and produce a tiled,
+# "shattered glass" mess when sampled at the 512px SD1.5 default — a
+# different failure mode from the steps/cfg mismatch above, and one that
+# also needs a much bigger base resolution to fix, not just more steps.
+_SDXL_CHECKPOINT_MARKERS = ("xl",)
+
+# Base generation resolution per _AddonConfig.local_image_resolution tier,
+# by aspect hint. Local diffusion models want dimensions close to what they
+# were trained at — SD1.5-family checkpoints are happiest around 512-768px,
+# SDXL-family ones need ~1024px, or output degrades into a tiled/fractured
+# look rather than just "less detail".
+_SIZE_TIERS: dict[str, dict[str, tuple[int, int]]] = {
+    "512": {"auto": (512, 512), "square": (512, 512), "portrait": (512, 768), "landscape": (768, 512)},
+    "768": {"auto": (768, 768), "square": (768, 768), "portrait": (768, 1152), "landscape": (1152, 768)},
+    "1024": {"auto": (1024, 1024), "square": (1024, 1024), "portrait": (896, 1152), "landscape": (1152, 896)},
 }
 
 
-def _resolve_size(size: str | None) -> tuple[int, int]:
-    """Map a plugin-wide size hint to (width, height) pixels."""
-    return _SIZE_PRESETS.get(size or "auto", _SIZE_PRESETS["auto"])
+def _resolve_size(size: str | None, resolution: str = "512") -> tuple[int, int]:
+    """Map a plugin-wide size hint + resolution tier to (width, height) pixels.
+
+    Args:
+        size: Aspect hint ("auto", "square", "portrait", "landscape").
+        resolution: Base resolution tier ("512", "768", or "1024") — see
+            _SIZE_TIERS. Falls back to "512" for an unrecognized value.
+    """
+    tier = _SIZE_TIERS.get(resolution, _SIZE_TIERS["512"])
+    return tier.get(size or "auto", tier["auto"])
+
+
+def _looks_sdxl_checkpoint(checkpoint: str) -> bool:
+    """True if a checkpoint filename looks like an SDXL-family model.
+
+    Matches "xl" as a standalone token (e.g. 'sd_xl_turbo', 'sdxl_base',
+    'juggernaut-xl') so it doesn't false-positive on unrelated substrings.
+    """
+    import re
+
+    tokens = re.split(r"[^a-z0-9]+", checkpoint.lower())
+    return "xl" in tokens or any(t.endswith("xl") and len(t) > 2 for t in tokens)
 
 
 def _pick_sampling_defaults(checkpoint: str) -> tuple[int, float]:
@@ -70,6 +97,25 @@ def _pick_sampling_defaults(checkpoint: str) -> tuple[int, float]:
     if any(marker in name for marker in _DISTILLED_CHECKPOINT_MARKERS):
         return _DISTILLED_STEPS, _DISTILLED_CFG_SCALE
     return _DEFAULT_STEPS, _DEFAULT_CFG_SCALE
+
+
+def _resolve_resolution(setting: str, *, checkpoint: str | None) -> str:
+    """Resolve the AddonConfig.local_image_resolution setting to a size tier.
+
+    Args:
+        setting: "auto", "512", "768", or "1024".
+        checkpoint: Checkpoint filename for auto-detection (ComfyUI only —
+            Automatic1111 has no checkpoint info to detect from, so pass
+            None there and "auto" falls back to "512").
+
+    Returns:
+        A key into _SIZE_TIERS ("512", "768", or "1024").
+    """
+    if setting in _SIZE_TIERS:
+        return setting
+    if checkpoint and _looks_sdxl_checkpoint(checkpoint):
+        return "1024"
+    return "512"
 
 
 class LocalImageError(Exception):
@@ -97,12 +143,14 @@ class Automatic1111Client:
         *,
         steps: int = _DEFAULT_STEPS,
         cfg_scale: float = _DEFAULT_CFG_SCALE,
+        resolution: str = "512",
         negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
         timeout: float = _DEFAULT_TIMEOUT,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._steps = steps
         self._cfg_scale = cfg_scale
+        self._resolution = resolution
         self._negative_prompt = negative_prompt
         self._timeout = timeout
 
@@ -120,7 +168,7 @@ class Automatic1111Client:
             LocalImageError: On a network error, non-200 response, or a
                 response missing image data.
         """
-        width, height = _resolve_size(size)
+        width, height = _resolve_size(size, self._resolution)
         body = {
             "prompt": prompt,
             "negative_prompt": self._negative_prompt,
@@ -204,6 +252,7 @@ class ComfyUIClient:
         *,
         steps: int = _DEFAULT_STEPS,
         cfg_scale: float = _DEFAULT_CFG_SCALE,
+        resolution: str = "512",
         negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
         timeout: float = _DEFAULT_TIMEOUT,
         poll_interval: float = _COMFYUI_POLL_INTERVAL,
@@ -215,6 +264,7 @@ class ComfyUIClient:
         self._checkpoint = checkpoint.strip()
         self._steps = steps
         self._cfg_scale = cfg_scale
+        self._resolution = resolution
         self._negative_prompt = negative_prompt
         self._timeout = timeout
         self._poll_interval = poll_interval
@@ -233,7 +283,7 @@ class ComfyUIClient:
             LocalImageError: On a network error, a non-200 response, or a
                 timeout waiting for generation to finish.
         """
-        width, height = _resolve_size(size)
+        width, height = _resolve_size(size, self._resolution)
         seed = random.randint(0, _SEED_MAX)  # noqa: S311
         workflow = _build_comfyui_workflow(
             prompt, self._negative_prompt, self._checkpoint, width, height, self._steps, self._cfg_scale, seed
@@ -316,14 +366,21 @@ def build_local_image_client(config: AddonConfig) -> LocalImageClient | None:
         return None
 
     if config.local_image_backend == "automatic1111":
-        return Automatic1111Client(config.local_image_url)
+        # No checkpoint info is available for Automatic1111 (it just uses
+        # whatever's loaded in the WebUI), so "auto" can't detect SDXL here —
+        # falls back to the SD1.5-safe 512 tier unless overridden in Settings.
+        resolution = _resolve_resolution(config.local_image_resolution, checkpoint=None)
+        return Automatic1111Client(config.local_image_url, resolution=resolution)
 
     if config.local_image_backend == "comfyui":
         checkpoint = config.local_image_checkpoint.strip()
         if not checkpoint:
             return None
         steps, cfg_scale = _pick_sampling_defaults(checkpoint)
-        return ComfyUIClient(config.local_image_url, checkpoint, steps=steps, cfg_scale=cfg_scale)
+        resolution = _resolve_resolution(config.local_image_resolution, checkpoint=checkpoint)
+        return ComfyUIClient(
+            config.local_image_url, checkpoint, steps=steps, cfg_scale=cfg_scale, resolution=resolution
+        )
 
     return None
 

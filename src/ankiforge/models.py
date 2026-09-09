@@ -131,3 +131,9 @@ class AddonConfig:
     local_image_backend: str = ""  # "", "automatic1111", or "comfyui"
     local_image_url: str = ""
     local_image_checkpoint: str = ""  # ComfyUI only — checkpoint (.safetensors) filename
+    # Base generation resolution: "auto" (detect from the ComfyUI checkpoint
+    # filename, or 512 if that's not possible — e.g. Automatic1111), "512",
+    # "768", or "1024". SDXL-family checkpoints need ~1024px to avoid the
+    # tiled/fractured look of running them below their native resolution —
+    # set this explicitly if a checkpoint doesn't match the auto-detection.
+    local_image_resolution: str = "auto"

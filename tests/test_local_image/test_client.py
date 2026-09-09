@@ -12,10 +12,14 @@ from ankiforge.local_image.client import (
     _DEFAULT_STEPS,
     _DISTILLED_CFG_SCALE,
     _DISTILLED_STEPS,
+    _SIZE_TIERS,
     Automatic1111Client,
     ComfyUIClient,
     LocalImageError,
+    _looks_sdxl_checkpoint,
     _pick_sampling_defaults,
+    _resolve_resolution,
+    _resolve_size,
     build_local_image_client,
     validate_local_image_backend,
 )
@@ -274,3 +278,108 @@ class TestValidateLocalImageBackend:
 
         assert is_valid is False
         assert error is not None
+
+
+# ---------------------------------------------------------------------------
+# Resolution: _looks_sdxl_checkpoint / _resolve_resolution / _resolve_size
+# ---------------------------------------------------------------------------
+
+
+class TestLooksSdxlCheckpoint:
+    @pytest.mark.parametrize(
+        "checkpoint",
+        [
+            "sd_xl_turbo_1.0.safetensors",
+            "sdxl_base_1.0.safetensors",
+            "juggernaut-xl-v9.safetensors",
+            "SDXL.safetensors",
+        ],
+    )
+    def test_matches_sdxl_family_names(self, checkpoint: str) -> None:
+        assert _looks_sdxl_checkpoint(checkpoint) is True
+
+    @pytest.mark.parametrize(
+        "checkpoint",
+        ["realisticVisionV60B1.safetensors", "dreamshaper_8.safetensors", "sd15_pruned.safetensors"],
+    )
+    def test_does_not_match_sd15_family_names(self, checkpoint: str) -> None:
+        assert _looks_sdxl_checkpoint(checkpoint) is False
+
+
+class TestResolveResolution:
+    def test_explicit_setting_wins_over_detection(self) -> None:
+        assert _resolve_resolution("768", checkpoint="sdxl_base.safetensors") == "768"
+
+    def test_auto_detects_sdxl_checkpoint(self) -> None:
+        assert _resolve_resolution("auto", checkpoint="sd_xl_turbo.safetensors") == "1024"
+
+    def test_auto_falls_back_to_512_for_normal_checkpoint(self) -> None:
+        assert _resolve_resolution("auto", checkpoint="dreamshaper_8.safetensors") == "512"
+
+    def test_auto_falls_back_to_512_without_checkpoint_info(self) -> None:
+        # Automatic1111 case — no checkpoint filename to detect from.
+        assert _resolve_resolution("auto", checkpoint=None) == "512"
+
+    def test_unknown_setting_falls_back_to_512(self) -> None:
+        assert _resolve_resolution("bogus", checkpoint=None) == "512"
+
+
+class TestResolveSize:
+    def test_default_tier_matches_previous_512_behavior(self) -> None:
+        assert _resolve_size("landscape") == (768, 512)
+
+    def test_1024_tier(self) -> None:
+        assert _resolve_size("square", "1024") == (1024, 1024)
+        assert _resolve_size(None, "1024") == _SIZE_TIERS["1024"]["auto"]
+
+    def test_unknown_tier_falls_back_to_512(self) -> None:
+        assert _resolve_size("square", "bogus") == _SIZE_TIERS["512"]["square"]
+
+
+class TestBuildLocalImageClientResolution:
+    def test_comfyui_sdxl_checkpoint_gets_1024_resolution(self) -> None:
+        config = AddonConfig(
+            local_image_backend="comfyui",
+            local_image_url="http://127.0.0.1:8188",
+            local_image_checkpoint="sdxl_base_1.0.safetensors",
+        )
+        client = build_local_image_client(config)
+        assert isinstance(client, ComfyUIClient)
+        assert client._resolution == "1024"  # noqa: SLF001
+
+    def test_comfyui_normal_checkpoint_gets_512_resolution(self) -> None:
+        config = AddonConfig(
+            local_image_backend="comfyui",
+            local_image_url="http://127.0.0.1:8188",
+            local_image_checkpoint="dreamshaper_8.safetensors",
+        )
+        client = build_local_image_client(config)
+        assert isinstance(client, ComfyUIClient)
+        assert client._resolution == "512"  # noqa: SLF001
+
+    def test_comfyui_explicit_resolution_overrides_detection(self) -> None:
+        config = AddonConfig(
+            local_image_backend="comfyui",
+            local_image_url="http://127.0.0.1:8188",
+            local_image_checkpoint="dreamshaper_8.safetensors",
+            local_image_resolution="1024",
+        )
+        client = build_local_image_client(config)
+        assert isinstance(client, ComfyUIClient)
+        assert client._resolution == "1024"  # noqa: SLF001
+
+    def test_automatic1111_defaults_to_512(self) -> None:
+        config = AddonConfig(local_image_backend="automatic1111", local_image_url="http://127.0.0.1:7860")
+        client = build_local_image_client(config)
+        assert isinstance(client, Automatic1111Client)
+        assert client._resolution == "512"  # noqa: SLF001
+
+    def test_automatic1111_explicit_resolution_is_respected(self) -> None:
+        config = AddonConfig(
+            local_image_backend="automatic1111",
+            local_image_url="http://127.0.0.1:7860",
+            local_image_resolution="1024",
+        )
+        client = build_local_image_client(config)
+        assert isinstance(client, Automatic1111Client)
+        assert client._resolution == "1024"  # noqa: SLF001
