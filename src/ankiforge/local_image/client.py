@@ -22,7 +22,14 @@ if TYPE_CHECKING:
     from ankiforge.models import AddonConfig
 
 _DEFAULT_TIMEOUT = 120.0
-_DEFAULT_STEPS = 20
+# Tuned for distilled "Turbo" checkpoints (SD Turbo, SDXL Turbo) — the
+# lightweight models this feature's setup guide recommends. They're trained
+# for 1-4 step sampling at a near-1 CFG scale; the classic SD defaults
+# (~20 steps, cfg 7) way overcook them into a blown-out, distorted mess.
+# A normal (non-distilled) checkpoint tolerates these fine too, just with
+# less structure than it's capable of at higher step counts.
+_DEFAULT_STEPS = 4
+_DEFAULT_CFG_SCALE = 1.5
 _DEFAULT_NEGATIVE_PROMPT = "text, watermark, signature, low quality, blurry"
 _COMFYUI_POLL_INTERVAL = 1.0
 _SEED_MAX = 2**32 - 1
@@ -66,11 +73,13 @@ class Automatic1111Client:
         base_url: str,
         *,
         steps: int = _DEFAULT_STEPS,
+        cfg_scale: float = _DEFAULT_CFG_SCALE,
         negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
         timeout: float = _DEFAULT_TIMEOUT,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._steps = steps
+        self._cfg_scale = cfg_scale
         self._negative_prompt = negative_prompt
         self._timeout = timeout
 
@@ -93,6 +102,7 @@ class Automatic1111Client:
             "prompt": prompt,
             "negative_prompt": self._negative_prompt,
             "steps": self._steps,
+            "cfg_scale": self._cfg_scale,
             "width": width,
             "height": height,
         }
@@ -126,6 +136,7 @@ def _build_comfyui_workflow(
     width: int,
     height: int,
     steps: int,
+    cfg: float,
     seed: int,
 ) -> dict[str, object]:
     """Build a minimal txt2img node graph: checkpoint -> CLIP encode -> KSampler -> VAE decode -> save."""
@@ -133,7 +144,7 @@ def _build_comfyui_workflow(
         "3": {
             "class_type": "KSampler",
             "inputs": {
-                "cfg": 7,
+                "cfg": cfg,
                 "denoise": 1,
                 "latent_image": ["5", 0],
                 "model": ["4", 0],
@@ -169,6 +180,7 @@ class ComfyUIClient:
         checkpoint: str,
         *,
         steps: int = _DEFAULT_STEPS,
+        cfg_scale: float = _DEFAULT_CFG_SCALE,
         negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
         timeout: float = _DEFAULT_TIMEOUT,
         poll_interval: float = _COMFYUI_POLL_INTERVAL,
@@ -179,6 +191,7 @@ class ComfyUIClient:
         self.base_url = base_url.rstrip("/")
         self._checkpoint = checkpoint.strip()
         self._steps = steps
+        self._cfg_scale = cfg_scale
         self._negative_prompt = negative_prompt
         self._timeout = timeout
         self._poll_interval = poll_interval
@@ -200,7 +213,7 @@ class ComfyUIClient:
         width, height = _resolve_size(size)
         seed = random.randint(0, _SEED_MAX)  # noqa: S311
         workflow = _build_comfyui_workflow(
-            prompt, self._negative_prompt, self._checkpoint, width, height, self._steps, seed
+            prompt, self._negative_prompt, self._checkpoint, width, height, self._steps, self._cfg_scale, seed
         )
 
         try:
