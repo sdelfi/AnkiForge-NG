@@ -90,6 +90,9 @@ def _dict_to_config(data: dict[str, object] | None) -> AddonConfig:
         custom_base_url=str(data.get("custom_base_url", defaults.custom_base_url)),
         custom_api_key=str(data.get("custom_api_key", defaults.custom_api_key)),
         custom_label=str(data.get("custom_label", defaults.custom_label)),
+        local_image_backend=str(data.get("local_image_backend", defaults.local_image_backend)),
+        local_image_url=str(data.get("local_image_url", defaults.local_image_url)),
+        local_image_checkpoint=str(data.get("local_image_checkpoint", defaults.local_image_checkpoint)),
     )
 
 

@@ -5,10 +5,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ankiforge.config.manager import get_config, save_config, validate_api_key, validate_custom_endpoint
+from ankiforge.local_image.client import validate_local_image_backend
 from ankiforge.models import AddonConfig
 from ankiforge.openrouter.models import Modality, Model
-from ankiforge.openrouter.routing_client import add_custom_prefix, is_custom_model
+from ankiforge.openrouter.routing_client import LOCAL_IMAGE_MODEL_ID, add_custom_prefix, is_custom_model
 from ankiforge.ui.styles import DIALOG_QSS
+
+_LOCAL_IMAGE_BACKENDS = [
+    ("", "Disabled"),
+    ("automatic1111", "Automatic1111 (stable-diffusion-webui)"),
+    ("comfyui", "ComfyUI"),
+]
+_LOCAL_IMAGE_URL_PLACEHOLDERS = {
+    "automatic1111": "http://127.0.0.1:7860",
+    "comfyui": "http://127.0.0.1:8188",
+}
 
 if TYPE_CHECKING:
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
@@ -71,19 +82,25 @@ def _build_config_from_dialog_state(
     custom_base_url: str = "",
     custom_api_key: str = "",
     custom_label: str = "Local",
+    local_image_backend: str = "",
+    local_image_url: str = "",
+    local_image_checkpoint: str = "",
 ) -> AddonConfig:
     """Build AddonConfig from dialog values.
 
     Args:
         api_key: OpenRouter API key.
         text_model_id: Text model ID (may be "custom::"-prefixed).
-        image_model_id: Image model ID (may be "custom::"-prefixed).
+        image_model_id: Image model ID (may be "custom::"- or "local-image::"-prefixed).
         audio_model_id: Audio model ID (may be "custom::"-prefixed).
         language: Card language.
         models: Loaded models (OpenRouter + custom) for pricing extraction.
         custom_base_url: Base URL of a custom OpenAI-compatible endpoint (LM Studio, etc.), if any.
         custom_api_key: API key for the custom endpoint, if it requires one.
         custom_label: Display label for the custom endpoint in model dropdowns.
+        local_image_backend: "", "automatic1111", or "comfyui".
+        local_image_url: Base URL of the local image generation backend, if any.
+        local_image_checkpoint: Checkpoint filename (ComfyUI only).
 
     Returns:
         Configured AddonConfig.
@@ -101,6 +118,9 @@ def _build_config_from_dialog_state(
         custom_base_url=custom_base_url.strip(),
         custom_api_key=custom_api_key.strip(),
         custom_label=custom_label.strip() or "Local",
+        local_image_backend=local_image_backend,
+        local_image_url=local_image_url.strip(),
+        local_image_checkpoint=local_image_checkpoint.strip(),
     )
 
 
@@ -148,7 +168,12 @@ def _populate_model_combo(
 
     selected_index = -1
     for i, model in enumerate(models):
-        tag = f" · {custom_label}" if model.source == "custom" else ""
+        if model.source == "custom":
+            tag = f" · {custom_label}"
+        elif model.source == "local-image":
+            tag = " · Local"
+        else:
+            tag = ""
         combo.addItem(f"{model.name}{tag} ({model.id})", model.id)
         if model.id == current_id:
             selected_index = i + 1  # +1 for the empty element
@@ -236,6 +261,7 @@ class SettingsDialog:
             mw: Anki main window.
         """
         from aqt.qt import (
+            QComboBox,
             QDialog,
             QDialogButtonBox,
             QFormLayout,
@@ -338,6 +364,47 @@ class SettingsDialog:
 
         layout.addWidget(custom_group)
 
+        # === Section 1c: Local Image Generation (Automatic1111 / ComfyUI) ===
+        local_image_group = QGroupBox("Local Image Generation (Automatic1111 / ComfyUI)")
+        local_image_layout = QFormLayout()
+        local_image_layout.setSpacing(8)
+        local_image_group.setLayout(local_image_layout)
+
+        self._local_image_backend_combo = QComboBox()
+        for value, display_name in _LOCAL_IMAGE_BACKENDS:
+            self._local_image_backend_combo.addItem(display_name, value)
+        self._local_image_backend_combo.currentIndexChanged.connect(self._on_local_image_backend_changed)
+        local_image_layout.addRow("Backend:", self._local_image_backend_combo)
+
+        self._local_image_url_input = QLineEdit()
+        local_image_layout.addRow("Base URL:", self._local_image_url_input)
+
+        self._local_image_checkpoint_label = QLabel("Checkpoint:")
+        self._local_image_checkpoint_input = QLineEdit()
+        self._local_image_checkpoint_input.setPlaceholderText("e.g. sd_xl_turbo_1.0.safetensors")
+        local_image_layout.addRow(self._local_image_checkpoint_label, self._local_image_checkpoint_input)
+
+        local_image_connect_row = QHBoxLayout()
+        local_image_connect_btn = QPushButton("Test connection")
+        local_image_connect_btn.clicked.connect(self._on_test_local_image)
+        local_image_connect_row.addWidget(local_image_connect_btn)
+        local_image_layout.addRow("", local_image_connect_row)
+
+        self._local_image_status_label = QLabel("")
+        self._local_image_status_label.setWordWrap(True)
+        local_image_layout.addRow("", self._local_image_status_label)
+
+        local_image_hint = QLabel(
+            "Free, fully offline image generation via a locally running Automatic1111 "
+            "(stable-diffusion-webui) or ComfyUI server. When enabled, pick "
+            "'Local Stable Diffusion' in the Image model dropdown below."
+        )
+        local_image_hint.setWordWrap(True)
+        local_image_hint.setStyleSheet("color: palette(placeholderText);")
+        local_image_layout.addRow("", local_image_hint)
+
+        layout.addWidget(local_image_group)
+
         # === Section 2: Models ===
         models_group = QGroupBox("Models")
         models_layout = QFormLayout()
@@ -405,6 +472,15 @@ class SettingsDialog:
         self._custom_api_key_input.setText(config.custom_api_key)
         self._custom_label_input.setText(config.custom_label)
 
+        backend_index = next(
+            (i for i, (value, _) in enumerate(_LOCAL_IMAGE_BACKENDS) if value == config.local_image_backend),
+            0,
+        )
+        self._local_image_backend_combo.setCurrentIndex(backend_index)
+        self._local_image_url_input.setText(config.local_image_url)
+        self._local_image_checkpoint_input.setText(config.local_image_checkpoint)
+        self._update_local_image_visibility()
+
         # Show cached values
         if config.cached_usage is not None:
             self._usage_label.setText(f"${config.cached_usage:.2f}")
@@ -416,6 +492,7 @@ class SettingsDialog:
             self._load_models_silent(config)
         if config.custom_base_url:
             self._load_custom_models_silent(config)
+        self._populate_combos(config)
 
     def _load_models_silent(self, config: AddonConfig) -> None:
         """Load OpenRouter models without showing errors (for initialization)."""
@@ -462,6 +539,25 @@ class SettingsDialog:
         raw_models = client.fetch_models(default_modalities=[Modality.TEXT], source="custom")
         return [replace(m, id=add_custom_prefix(m.id)) for m in raw_models]
 
+    @staticmethod
+    def _local_image_model_entry(config: AddonConfig) -> Model | None:
+        """Build the synthetic 'Local Stable Diffusion' entry for the Image model dropdown.
+
+        Only shown once a backend + URL are configured (checkpoint required
+        too, for ComfyUI) — there's nothing to fetch a model list from since
+        Automatic1111/ComfyUI aren't OpenAI-compatible /models endpoints.
+        """
+        if not config.local_image_backend or not config.local_image_url.strip():
+            return None
+        if config.local_image_backend == "comfyui" and not config.local_image_checkpoint.strip():
+            return None
+        return Model(
+            id=LOCAL_IMAGE_MODEL_ID,
+            name="Local Stable Diffusion",
+            modalities=[Modality.IMAGE],
+            source="local-image",
+        )
+
     def _populate_combos(self, config: AddonConfig) -> None:
         """Populate comboboxes with OpenRouter + custom-endpoint models, merged by modality."""
         all_models = self._models + self._custom_models
@@ -469,10 +565,55 @@ class SettingsDialog:
         image_models = _filter_models_by_modality(all_models, Modality.IMAGE)
         audio_models = _filter_models_by_modality(all_models, Modality.AUDIO)
 
+        local_image_entry = self._local_image_model_entry(config)
+        if local_image_entry is not None:
+            image_models = [local_image_entry, *image_models]
+
         label = config.custom_label or "Local"
         _populate_model_combo(self._text_model_combo, text_models, config.text_model, custom_label=label)
         _populate_model_combo(self._image_model_combo, image_models, config.image_model, custom_label=label)
         _populate_model_combo(self._audio_model_combo, audio_models, config.audio_model, custom_label=label)
+
+    def _update_local_image_visibility(self) -> None:
+        """Show/hide the checkpoint field and set the URL placeholder based on the selected backend."""
+        backend = self._local_image_backend_combo.currentData()
+        self._local_image_url_input.setPlaceholderText(_LOCAL_IMAGE_URL_PLACEHOLDERS.get(backend, ""))
+        is_comfyui = backend == "comfyui"
+        self._local_image_checkpoint_label.setVisible(is_comfyui)
+        self._local_image_checkpoint_input.setVisible(is_comfyui)
+
+    def _on_local_image_backend_changed(self) -> None:
+        """Backend combo change handler — update field visibility/placeholder."""
+        self._update_local_image_visibility()
+
+    def _on_test_local_image(self) -> None:
+        """Test connection button handler for the local image generation backend."""
+        backend = self._local_image_backend_combo.currentData()
+        base_url = self._local_image_url_input.text().strip()
+
+        if not backend:
+            _set_status(self._local_image_status_label, "Select a backend first", ok=False)
+            return
+
+        is_reachable, error = validate_local_image_backend(backend, base_url)
+        if not is_reachable:
+            _set_status(self._local_image_status_label, f"Error: {error}", ok=False)
+            return
+
+        _set_status(self._local_image_status_label, "Connected", ok=True)
+
+        from dataclasses import replace
+
+        config = replace(
+            get_config(),
+            local_image_backend=backend,
+            local_image_url=base_url,
+            local_image_checkpoint=self._local_image_checkpoint_input.text().strip(),
+            text_model=_get_selected_model_id(self._text_model_combo),
+            image_model=_get_selected_model_id(self._image_model_combo),
+            audio_model=_get_selected_model_id(self._audio_model_combo),
+        )
+        self._populate_combos(config)
 
     def _on_connect(self) -> None:
         """Connect button handler — validate key + load models."""
@@ -579,6 +720,11 @@ class SettingsDialog:
             if not model_id:
                 continue
 
+            if model_id == LOCAL_IMAGE_MODEL_ID:
+                if not self._local_image_backend_combo.currentData():
+                    return f"{label} model is set to local image generation, but no backend is selected"
+                continue
+
             if is_custom_model(model_id):
                 if model_id in known_custom_ids:
                     continue
@@ -644,6 +790,9 @@ class SettingsDialog:
             custom_base_url=self._custom_base_url_input.text(),
             custom_api_key=self._custom_api_key_input.text(),
             custom_label=self._custom_label_input.text(),
+            local_image_backend=self._local_image_backend_combo.currentData() or "",
+            local_image_url=self._local_image_url_input.text(),
+            local_image_checkpoint=self._local_image_checkpoint_input.text(),
         )
         save_config(config)
         self._dialog.accept()
