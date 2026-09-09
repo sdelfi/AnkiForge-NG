@@ -105,6 +105,72 @@ It works with **any model** available on OpenRouter (GPT-4o, Claude, Gemini, Lla
 4. Pick a target deck (or type a new name to create one)
 5. Click **Generate**
 
+## Local Image Generation (optional)
+
+Instead of paying per image through OpenRouter, you can point AnkiForge at a
+local Stable Diffusion server for free, offline image generation. In
+**Tools → AnkiForge Settings → Local Image Generation**, pick a backend, set
+its URL, hit **Test connection**, then select **"Local Stable Diffusion"** as
+the Image model.
+
+Three backends are supported:
+
+| Backend | What it is | Default URL |
+|---------|-----------|--------------|
+| **Automatic1111** | [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) | `http://127.0.0.1:7860` |
+| **Draw Things** | [Draw Things](https://drawthings.ai/) app (Mac/iOS), native Apple Silicon — enable its HTTP API server under Settings → API Server | `http://127.0.0.1:7860` |
+| **ComfyUI** | [ComfyUI](https://github.com/comfyanonymous/ComfyUI) — requires a checkpoint filename in Settings, since ComfyUI has no "currently loaded model" concept | `http://127.0.0.1:8188` |
+
+### Notes from getting this working in practice
+
+- **On Apple Silicon, prefer Draw Things over ComfyUI.** We hit a
+  reproducible "shattered glass" / noise-like image bug running ComfyUI on
+  MPS (Apple GPU) with an SDXL-Turbo checkpoint — confirmed environmental
+  (ComfyUI + MPS), not an AnkiForge bug, by generating a correct image from
+  the same checkpoint in Draw Things. Draw Things is a native Apple Silicon
+  app and doesn't have this issue.
+- **Avoid "Turbo"/"Lightning"/LCM checkpoints if you see garbled or
+  distorted output**, especially on multi-subject scenes. These are
+  distilled for 1-4 step sampling and need very specific settings (an
+  *ancestral* sampler, low CFG scale) to look right — AnkiForge auto-detects
+  known markers in ComfyUI checkpoint filenames and adjusts steps/CFG/sampler
+  accordingly, and defaults Draw Things to an ancestral sampler too, but a
+  plain (non-distilled) checkpoint is simply more forgiving and reliable.
+  **DreamShaper v8** (SD1.5, non-Turbo) has worked well for us as a general
+  illustration model — clean style, stable anatomy, no license to bother with
+  for personal use.
+- **Resolution matters more than you'd expect.** Generating an SDXL-family
+  checkpoint below its native resolution (~1024px) produces a tiled,
+  fractured look rather than just "less detail" — set **Resolution** to
+  `1024` in Settings for SDXL checkpoints (SDXL-Turbo specifically was
+  distilled at 512px, so it's the one SDXL exception). AnkiForge auto-detects
+  this from the ComfyUI checkpoint filename; for Automatic1111/Draw Things
+  (no checkpoint info available) set it explicitly.
+- **The "Advanced (JSON)" field** in Settings lets you override
+  steps/cfg_scale/sampler_name/resolution directly, e.g.
+  `{"steps": 25, "cfg_scale": 7, "sampler_name": "DPM++ 2M Karras"}` — useful
+  for a checkpoint or sampler preference the auto-detection doesn't cover, or
+  to just pin settings once instead of re-tuning them per request. Sampler
+  names differ by backend: ComfyUI uses lowercase ids (`euler`,
+  `euler_ancestral`, `dpmpp_2m`), Automatic1111/Draw Things use dropdown-style
+  names (`Euler`, `Euler a`, `DPM++ 2M Karras`).
+- **Managing disk space in Draw Things:** open the model picker → **Manage**
+  → swipe/delete a downloaded model you no longer use. Downloaded checkpoints
+  can be several GB each.
+
+### Working example: Draw Things + DreamShaper v8
+
+The setup that's worked reliably for us on Apple Silicon:
+
+- Backend: **Draw Things**, URL `http://127.0.0.1:7860`, HTTP API server
+  enabled in Draw Things (Settings → API Server → Protocol: HTTP)
+- Model loaded in Draw Things: **DreamShaper v8** (not XL, not Turbo)
+- Resolution: `512` (DreamShaper v8 is SD1.5-native)
+- Advanced (JSON):
+  ```json
+  {"steps": 25, "cfg_scale": 7, "sampler_name": "DPM++ 2M Karras"}
+  ```
+
 ## Pricing
 
 AnkiForge is **free**. You only pay for AI usage through OpenRouter.
