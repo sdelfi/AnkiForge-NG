@@ -284,6 +284,7 @@ class SettingsDialog:
             QHBoxLayout,
             QLabel,
             QLineEdit,
+            QPlainTextEdit,
             QPushButton,
             QVBoxLayout,
         )
@@ -411,10 +412,11 @@ class SettingsDialog:
         )
         local_image_layout.addRow("Resolution:", self._local_image_resolution_combo)
 
-        self._local_image_advanced_input = QLineEdit()
+        self._local_image_advanced_input = QPlainTextEdit()
         self._local_image_advanced_input.setPlaceholderText(
-            '{"steps": 8, "cfg_scale": 2, "sampler_name": "dpmpp_2m_sde"}'
+            '{\n  "steps": 8,\n  "cfg_scale": 2,\n  "sampler_name": "dpmpp_2m_sde"\n}'
         )
+        self._local_image_advanced_input.setFixedHeight(90)
         self._local_image_advanced_input.setToolTip(
             "Optional JSON overrides for steps / cfg_scale / sampler_name / resolution, "
             "applied on top of the auto-picked values above — for a checkpoint or sampler "
@@ -528,7 +530,7 @@ class SettingsDialog:
             0,
         )
         self._local_image_resolution_combo.setCurrentIndex(resolution_index)
-        self._local_image_advanced_input.setText(config.local_image_advanced)
+        self._local_image_advanced_input.setPlainText(config.local_image_advanced)
         self._update_local_image_visibility()
 
         # Show cached values
@@ -638,7 +640,7 @@ class SettingsDialog:
 
     def _on_local_image_advanced_changed(self) -> None:
         """Live-validate the Advanced (JSON) field as the user types."""
-        text = self._local_image_advanced_input.text().strip()
+        text = self._local_image_advanced_input.toPlainText().strip()
         if not text:
             self._local_image_advanced_status_label.setText("")
             return
@@ -872,7 +874,7 @@ class SettingsDialog:
             local_image_url=self._local_image_url_input.text(),
             local_image_checkpoint=self._local_image_checkpoint_input.text(),
             local_image_resolution=self._local_image_resolution_combo.currentData() or "auto",
-            local_image_advanced=self._local_image_advanced_input.text().strip(),
+            local_image_advanced=self._local_image_advanced_input.toPlainText().strip(),
         )
         save_config(config)
         self._dialog.accept()
