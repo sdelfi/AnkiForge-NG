@@ -168,8 +168,10 @@ The setup that's worked reliably for us on Apple Silicon:
 - Resolution: `512` (DreamShaper v8 is SD1.5-native)
 - Advanced (JSON):
   ```json
-  {"steps": 25, "cfg_scale": 7, "sampler_name": "DPM++ 2M Karras"}
+  {"steps": 25, "cfg_scale": 7, "sampler_name": "DPM++ 2M AYS"}
   ```
+  (`DPM++ 2M AYS` is Draw Things' default sampler — matching it here avoids
+  a mismatch between what AnkiForge requests and what the app actually uses.)
 
 ## Pricing
 
