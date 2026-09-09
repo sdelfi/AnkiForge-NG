@@ -195,6 +195,24 @@ class TestParseJsonResponse:
     def test_field_regex_fallback_returns_none_without_expected_keys(self, generator: LanguageGenerator) -> None:
         assert generator._parse_json_fields_by_regex("just some plain text, no JSON at all.") is None
 
+    def test_recovers_fields_with_unquoted_keys_and_arrow(self, generator: LanguageGenerator) -> None:
+        """Regression test: some weaker local models drop the quotes around
+        field names and prepend the word with an arrow instead of emitting a
+        JSON object, e.g. `"suspicious" -> definition: "...", example: "..."`.
+        The regex fallback should still recover definition/example from this,
+        instead of dumping the whole raw response into `definition`."""
+        response = (
+            '"suspicious" → definition: "Suspicious means having a feeling that something is wrong, '
+            'dishonest, or not as it seems.", example: "The detective looked suspiciously at the empty '
+            'wallet left on the table, wondering if it was a trap."'
+        )
+        definition, example, ipa = generator._parse_json_response(response)
+        assert definition == "Suspicious means having a feeling that something is wrong, dishonest, or not as it seems."
+        assert example == (
+            "The detective looked suspiciously at the empty wallet left on the table, wondering if it was a trap."
+        )
+        assert ipa is None
+
 
 # ---------------------------------------------------------------------------
 # Card generation — one JSON request per text

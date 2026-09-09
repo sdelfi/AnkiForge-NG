@@ -32,17 +32,24 @@ _DEFAULT_SYSTEM_PROMPT = (
     '  "ipa" — IPA phonetic transcription, as a JSON string wrapped in double quotes, '
     'e.g. "ipa": "/wɜːrd/". The slashes go INSIDE the quotes — never emit /wɜːrd/ '
     "as a bare, unquoted value.\n\n"
-    "Respond with ONLY valid JSON, no markdown fences, no extra text.\n\n"
-    "Examples of GOOD output:\n"
-    '  "eloquent" → definition: "Eloquent means able to express thoughts and feelings clearly '
-    'and beautifully using words.", example: "Her eloquent speech at the wedding painted such a '
-    'vivid picture that guests laughed, cried, and sat completely silent."\n'
-    '  "zoom" → definition: "To zoom is to move very quickly or to increase rapidly in size.", '
-    'example: "The cars zoomed along the highway, leaving a trail of dust behind them."\n'
-    '  "serendipity" → definition: "Serendipity is a happy accident — finding something wonderful '
-    'when you were not looking for it.", example: "By pure serendipity, she found a first-edition '
-    'book at a garage sale for just one dollar."\n\n'
-    "Examples of BAD output:\n"
+    "Respond with ONLY a single valid JSON object, and NOTHING else — "
+    "no markdown fences, no arrows, no prose before or after it, no restating the word. "
+    "Every field name MUST be a double-quoted string. Do not use symbols like '→' anywhere.\n\n"
+    "Examples of GOOD output (this is the ENTIRE response, verbatim):\n"
+    '  For "eloquent": '
+    '{"definition": "Eloquent means able to express thoughts and feelings clearly and beautifully '
+    'using words.", "example": "Her eloquent speech at the wedding painted such a vivid picture '
+    'that guests laughed, cried, and sat completely silent."}\n'
+    '  For "zoom": '
+    '{"definition": "To zoom is to move very quickly or to increase rapidly in size.", '
+    '"example": "The cars zoomed along the highway, leaving a trail of dust behind them."}\n'
+    '  For "serendipity": '
+    '{"definition": "Serendipity is a happy accident — finding something wonderful when you were '
+    'not looking for it.", "example": "By pure serendipity, she found a first-edition book at a '
+    'garage sale for just one dollar."}\n\n'
+    "Examples of BAD output — do NOT do any of this:\n"
+    '  `"eloquent" → definition: "..."` ← WRONG, not JSON: unquoted key, uses an arrow, restates the word\n'
+    '  `Here is the JSON: {"definition": "..."}` ← WRONG, text before the JSON object\n'
     '  definition without the word: "Moving very quickly" ← WRONG, must start with the word\n'
     '  example without the word: "The cars moved fast along the road" ← WRONG, '
     "the word must appear in the example sentence"
@@ -78,10 +85,13 @@ _IPA_UNQUOTED_RE = re.compile(r'("ipa"\s*:\s*)(/[^",}\]\n]*/)(?!")')
 # Field-level fallbacks used when the response isn't valid JSON even after
 # repair (e.g. it's missing a comma, or has stray text around the object).
 # These let us still recover the individual fields by regex instead of
-# falling back to a naive sentence split.
-_DEFINITION_FIELD_RE = re.compile(r'"definition"\s*:\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
-_EXAMPLE_FIELD_RE = re.compile(r'"example"\s*:\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
-_IPA_FIELD_RE = re.compile(r'"ipa"\s*:\s*"?(/[^",}\]\n]*/)"?')
+# falling back to a naive sentence split. The key itself is matched with
+# optional quotes ("?) — weaker models (notably local ones) sometimes drop
+# the quotes around field names even though the value is still quoted, e.g.
+# `definition: "..."` instead of `"definition": "..."`.
+_DEFINITION_FIELD_RE = re.compile(r'"?definition"?\s*:\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
+_EXAMPLE_FIELD_RE = re.compile(r'"?example"?\s*:\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
+_IPA_FIELD_RE = re.compile(r'"?ipa"?\s*:\s*"?(/[^",}\]\n]*/)"?')
 
 
 def _repair_json_like(text: str) -> str:
