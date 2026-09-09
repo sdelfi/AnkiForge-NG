@@ -15,10 +15,12 @@ from ankiforge.ui.styles import DIALOG_QSS
 _LOCAL_IMAGE_BACKENDS = [
     ("", "Disabled"),
     ("automatic1111", "Automatic1111 (stable-diffusion-webui)"),
+    ("draw_things", "Draw Things"),
     ("comfyui", "ComfyUI"),
 ]
 _LOCAL_IMAGE_URL_PLACEHOLDERS = {
     "automatic1111": "http://127.0.0.1:7860",
+    "draw_things": "http://127.0.0.1:7860",
     "comfyui": "http://127.0.0.1:8188",
 }
 _LOCAL_IMAGE_RESOLUTIONS = [
@@ -108,7 +110,7 @@ def _build_config_from_dialog_state(
         custom_base_url: Base URL of a custom OpenAI-compatible endpoint (LM Studio, etc.), if any.
         custom_api_key: API key for the custom endpoint, if it requires one.
         custom_label: Display label for the custom endpoint in model dropdowns.
-        local_image_backend: "", "automatic1111", or "comfyui".
+        local_image_backend: "", "automatic1111", "draw_things", or "comfyui".
         local_image_url: Base URL of the local image generation backend, if any.
         local_image_checkpoint: Checkpoint filename (ComfyUI only).
         local_image_resolution: "auto", "512", "768", or "1024".
@@ -421,8 +423,9 @@ class SettingsDialog:
             "Optional JSON overrides for steps / cfg_scale / sampler_name / resolution, "
             "applied on top of the auto-picked values above — for a checkpoint or sampler "
             "preference the automatic detection doesn't cover. Leave empty to just use "
-            "those. Recognized sampler_name values are whatever your ComfyUI/Automatic1111 "
-            "install supports (e.g. 'euler', 'euler_ancestral', 'dpmpp_2m', 'dpmpp_2m_sde')."
+            "those. Sampler naming differs by backend: ComfyUI uses lowercase ids like "
+            "'euler', 'euler_ancestral', 'dpmpp_2m'; Automatic1111 and Draw Things use "
+            "names like 'Euler', 'Euler a', 'DPM++ 2M Karras' (as shown in their own UI)."
         )
         self._local_image_advanced_input.textChanged.connect(self._on_local_image_advanced_changed)
         local_image_layout.addRow("Advanced (JSON):", self._local_image_advanced_input)

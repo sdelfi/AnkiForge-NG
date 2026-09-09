@@ -1,4 +1,4 @@
-"""Local image generation backends: Automatic1111 (stable-diffusion-webui) and ComfyUI.
+"""Local image generation backends: Automatic1111 (stable-diffusion-webui), Draw Things, and ComfyUI.
 
 Unlike OpenRouter and OpenAI-compatible chat servers (LM Studio, Ollama, vLLM), these
 two don't speak the /chat/completions "modalities" format that
@@ -30,6 +30,14 @@ _DEFAULT_TIMEOUT = 120.0
 _DEFAULT_STEPS = 20
 _DEFAULT_CFG_SCALE = 7.0
 _DEFAULT_SAMPLER = "euler"
+# Automatic1111Client and DrawThingsClient both speak dropdown-style sampler
+# names ("Euler", "Euler a", "DPM++ 2M Karras", ...) rather than ComfyUI's
+# node-based lowercase_with_underscore ids. Draw Things defaults to the
+# ancestral variant since it's commonly used with Turbo/Lightning-distilled
+# checkpoints that need it for coherent few-step output (see _DISTILLED_SAMPLER
+# above for the same reasoning on the ComfyUI side).
+_DEFAULT_SAMPLER_A1111 = "Euler"
+_DEFAULT_SAMPLER_DRAW_THINGS = "Euler a"
 # Distilled "Turbo"/"Lightning"/LCM checkpoints are trained for 1-4 step
 # sampling at a near-1 CFG scale — the standard defaults above way overcook
 # them into a blown-out, distorted mess. Auto-selected via
@@ -124,8 +132,15 @@ def _resolve_resolution(setting: str, *, checkpoint: str | None) -> str:
     """
     if setting in _SIZE_TIERS:
         return setting
-    if checkpoint and _looks_sdxl_checkpoint(checkpoint):
-        return "1024"
+    if checkpoint:
+        # SDXL-Turbo specifically was distilled at 512x512, unlike base SDXL
+        # or SDXL-Lightning (which target the full 1024x1024 resolution) —
+        # confirmed empirically: this checkpoint produces a coherent image at
+        # 512 and a tiled/fractured one at 1024, regardless of steps/sampler.
+        if "turbo" in checkpoint.lower():
+            return "512"
+        if _looks_sdxl_checkpoint(checkpoint):
+            return "1024"
     return "512"
 
 
@@ -213,7 +228,7 @@ class Automatic1111Client:
         *,
         steps: int = _DEFAULT_STEPS,
         cfg_scale: float = _DEFAULT_CFG_SCALE,
-        sampler_name: str = _DEFAULT_SAMPLER,
+        sampler_name: str = _DEFAULT_SAMPLER_A1111,
         resolution: str = "512",
         negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
         timeout: float = _DEFAULT_TIMEOUT,
@@ -268,6 +283,87 @@ class Automatic1111Client:
 
         if not images:
             msg = "Automatic1111 returned no images"
+            raise LocalImageError(msg)
+
+        return base64.b64decode(images[0])
+
+
+class DrawThingsClient:
+    """Client for Draw Things' HTTP API server (Settings > API Server > Protocol: HTTP).
+
+    Draw Things implements the same POST /sdapi/v1/txt2img path and
+    {"images": [base64, ...]} response shape as AUTOMATIC1111, but reads its
+    CFG/sampler parameters under different keys (guidance_scale/sampler
+    instead of cfg_scale/sampler_name) — confirmed against a real Draw
+    Things server via curl. A separate client (rather than reusing
+    Automatic1111Client) keeps each server's request body honest instead of
+    guessing which key names it'll accept.
+
+    Uses whatever model is currently loaded in Draw Things — there's no
+    per-request model selection, unlike OpenRouter/ComfyUI.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        steps: int = _DEFAULT_STEPS,
+        cfg_scale: float = _DEFAULT_CFG_SCALE,
+        sampler_name: str = _DEFAULT_SAMPLER_DRAW_THINGS,
+        resolution: str = "512",
+        negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
+        timeout: float = _DEFAULT_TIMEOUT,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self._steps = steps
+        self._cfg_scale = cfg_scale
+        self._sampler_name = sampler_name
+        self._resolution = resolution
+        self._negative_prompt = negative_prompt
+        self._timeout = timeout
+
+    def generate_image(self, prompt: str, *, size: str | None = None) -> bytes:
+        """Generate an image via POST /sdapi/v1/txt2img.
+
+        Args:
+            prompt: Image description.
+            size: Plugin-wide size hint (mapped to width/height).
+
+        Returns:
+            PNG image bytes.
+
+        Raises:
+            LocalImageError: On a network error, non-200 response, or a
+                response missing image data.
+        """
+        width, height = _resolve_size(size, self._resolution)
+        body = {
+            "prompt": prompt,
+            "negative_prompt": self._negative_prompt,
+            "sampler": self._sampler_name,
+            "steps": self._steps,
+            "guidance_scale": self._cfg_scale,
+            "width": width,
+            "height": height,
+        }
+        try:
+            resp = requests.post(f"{self.base_url}/sdapi/v1/txt2img", json=body, timeout=self._timeout)
+        except Exception as e:  # noqa: BLE001
+            msg = f"Network error contacting Draw Things: {e}"
+            raise LocalImageError(msg) from e
+
+        if resp.status_code != 200:
+            msg = f"Draw Things returned status {resp.status_code}: {resp.text[:300]}"
+            raise LocalImageError(msg)
+
+        try:
+            images = resp.json()["images"]
+        except (ValueError, KeyError) as e:
+            msg = "Draw Things response missing image data"
+            raise LocalImageError(msg) from e
+
+        if not images:
+            msg = "Draw Things returned no images"
             raise LocalImageError(msg)
 
         return base64.b64decode(images[0])
@@ -457,9 +553,21 @@ def build_local_image_client(config: AddonConfig) -> LocalImageClient | None:
         # dropdown, or the Advanced JSON field for steps/cfg/sampler too).
         resolution = _resolve_resolution(config.local_image_resolution, checkpoint=None)
         steps, cfg_scale, sampler_name, resolution = _apply_advanced_overrides(
-            _DEFAULT_STEPS, _DEFAULT_CFG_SCALE, _DEFAULT_SAMPLER, resolution, config.local_image_advanced
+            _DEFAULT_STEPS, _DEFAULT_CFG_SCALE, _DEFAULT_SAMPLER_A1111, resolution, config.local_image_advanced
         )
         return Automatic1111Client(
+            config.local_image_url, steps=steps, cfg_scale=cfg_scale, sampler_name=sampler_name, resolution=resolution
+        )
+
+    if config.local_image_backend == "draw_things":
+        # Same reasoning as the automatic1111 branch above — no checkpoint
+        # info is available, so "auto" falls back to the standard defaults
+        # unless overridden in Settings.
+        resolution = _resolve_resolution(config.local_image_resolution, checkpoint=None)
+        steps, cfg_scale, sampler_name, resolution = _apply_advanced_overrides(
+            _DEFAULT_STEPS, _DEFAULT_CFG_SCALE, _DEFAULT_SAMPLER_DRAW_THINGS, resolution, config.local_image_advanced
+        )
+        return DrawThingsClient(
             config.local_image_url, steps=steps, cfg_scale=cfg_scale, sampler_name=sampler_name, resolution=resolution
         )
 
@@ -484,11 +592,21 @@ def build_local_image_client(config: AddonConfig) -> LocalImageClient | None:
     return None
 
 
+_HEALTH_CHECK_PATHS = {
+    "automatic1111": "/sdapi/v1/sd-models",
+    "comfyui": "/system_stats",
+    # Draw Things' HTTP API server doesn't implement AUTOMATIC1111's
+    # sd-models/system_stats endpoints — just check the server answers at
+    # the root at all.
+    "draw_things": "/",
+}
+
+
 def validate_local_image_backend(backend: str, base_url: str) -> tuple[bool, str | None]:
     """Check that a local image generation backend is reachable.
 
     Args:
-        backend: "automatic1111" or "comfyui".
+        backend: "automatic1111", "draw_things", or "comfyui".
         base_url: Base URL of the backend, e.g. 'http://127.0.0.1:7860'.
 
     Returns:
@@ -498,7 +616,7 @@ def validate_local_image_backend(backend: str, base_url: str) -> tuple[bool, str
         return False, "Base URL is empty"
 
     url = base_url.strip().rstrip("/")
-    health_path = "/sdapi/v1/sd-models" if backend == "automatic1111" else "/system_stats"
+    health_path = _HEALTH_CHECK_PATHS.get(backend, "/system_stats")
 
     try:
         resp = requests.get(f"{url}{health_path}", timeout=10)

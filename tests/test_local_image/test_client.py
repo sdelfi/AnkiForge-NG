@@ -10,6 +10,8 @@ import pytest
 from ankiforge.local_image.client import (
     _DEFAULT_CFG_SCALE,
     _DEFAULT_SAMPLER,
+    _DEFAULT_SAMPLER_A1111,
+    _DEFAULT_SAMPLER_DRAW_THINGS,
     _DEFAULT_STEPS,
     _DISTILLED_CFG_SCALE,
     _DISTILLED_SAMPLER,
@@ -17,6 +19,7 @@ from ankiforge.local_image.client import (
     _SIZE_TIERS,
     Automatic1111Client,
     ComfyUIClient,
+    DrawThingsClient,
     LocalImageError,
     _apply_advanced_overrides,
     _looks_sdxl_checkpoint,
@@ -80,6 +83,101 @@ class TestAutomatic1111Client:
     def test_network_error_raises(self) -> None:
         with patch("ankiforge.local_image.client.requests.post", side_effect=Exception("refused")):
             client = Automatic1111Client("http://127.0.0.1:7860")
+            with pytest.raises(LocalImageError, match="Network error"):
+                client.generate_image("a cat")
+
+    def test_default_sampler_is_a1111_style(self) -> None:
+        client = Automatic1111Client("http://127.0.0.1:7860")
+        assert client._sampler_name == _DEFAULT_SAMPLER_A1111  # noqa: SLF001
+
+    def test_request_body_uses_a1111_key_names(self) -> None:
+        raw_png = b"fake-png-bytes"
+        encoded = base64.b64encode(raw_png).decode()
+        mock_response = MagicMock(status_code=200)
+        mock_response.json.return_value = {"images": [encoded]}
+
+        with patch("ankiforge.local_image.client.requests.post", return_value=mock_response) as mock_post:
+            client = Automatic1111Client("http://127.0.0.1:7860")
+            client.generate_image("a cat")
+
+        _, kwargs = mock_post.call_args
+        assert kwargs["json"]["sampler_name"] == _DEFAULT_SAMPLER_A1111
+        assert kwargs["json"]["cfg_scale"] == _DEFAULT_CFG_SCALE
+        assert "sampler" not in kwargs["json"]
+        assert "guidance_scale" not in kwargs["json"]
+
+
+class TestDrawThingsClient:
+    def test_generate_image_returns_decoded_bytes(self) -> None:
+        raw_png = b"fake-png-bytes"
+        encoded = base64.b64encode(raw_png).decode()
+        mock_response = MagicMock(status_code=200)
+        mock_response.json.return_value = {"images": [encoded]}
+
+        with patch("ankiforge.local_image.client.requests.post", return_value=mock_response) as mock_post:
+            client = DrawThingsClient("http://127.0.0.1:7860")
+            result = client.generate_image("a cat", size="square")
+
+        assert result == raw_png
+        args, kwargs = mock_post.call_args
+        assert args[0] == "http://127.0.0.1:7860/sdapi/v1/txt2img"
+        assert kwargs["json"]["prompt"] == "a cat"
+        assert kwargs["json"]["width"] == 512
+        assert kwargs["json"]["height"] == 512
+
+    def test_default_sampler_is_ancestral(self) -> None:
+        client = DrawThingsClient("http://127.0.0.1:7860")
+        assert client._sampler_name == _DEFAULT_SAMPLER_DRAW_THINGS  # noqa: SLF001
+
+    def test_request_body_uses_draw_things_key_names(self) -> None:
+        raw_png = b"fake-png-bytes"
+        encoded = base64.b64encode(raw_png).decode()
+        mock_response = MagicMock(status_code=200)
+        mock_response.json.return_value = {"images": [encoded]}
+
+        with patch("ankiforge.local_image.client.requests.post", return_value=mock_response) as mock_post:
+            client = DrawThingsClient("http://127.0.0.1:7860")
+            client.generate_image("a cat")
+
+        _, kwargs = mock_post.call_args
+        assert kwargs["json"]["sampler"] == _DEFAULT_SAMPLER_DRAW_THINGS
+        assert kwargs["json"]["guidance_scale"] == _DEFAULT_CFG_SCALE
+        assert "sampler_name" not in kwargs["json"]
+        assert "cfg_scale" not in kwargs["json"]
+
+    def test_strips_trailing_slash_from_base_url(self) -> None:
+        client = DrawThingsClient("http://127.0.0.1:7860/")
+        assert client.base_url == "http://127.0.0.1:7860"
+
+    def test_non_200_response_raises(self) -> None:
+        mock_response = MagicMock(status_code=500, text="server error")
+
+        with patch("ankiforge.local_image.client.requests.post", return_value=mock_response):
+            client = DrawThingsClient("http://127.0.0.1:7860")
+            with pytest.raises(LocalImageError, match="status 500"):
+                client.generate_image("a cat")
+
+    def test_missing_images_field_raises(self) -> None:
+        mock_response = MagicMock(status_code=200)
+        mock_response.json.return_value = {}
+
+        with patch("ankiforge.local_image.client.requests.post", return_value=mock_response):
+            client = DrawThingsClient("http://127.0.0.1:7860")
+            with pytest.raises(LocalImageError, match="missing image data"):
+                client.generate_image("a cat")
+
+    def test_empty_images_list_raises(self) -> None:
+        mock_response = MagicMock(status_code=200)
+        mock_response.json.return_value = {"images": []}
+
+        with patch("ankiforge.local_image.client.requests.post", return_value=mock_response):
+            client = DrawThingsClient("http://127.0.0.1:7860")
+            with pytest.raises(LocalImageError, match="no images"):
+                client.generate_image("a cat")
+
+    def test_network_error_raises(self) -> None:
+        with patch("ankiforge.local_image.client.requests.post", side_effect=Exception("refused")):
+            client = DrawThingsClient("http://127.0.0.1:7860")
             with pytest.raises(LocalImageError, match="Network error"):
                 client.generate_image("a cat")
 
@@ -231,6 +329,14 @@ class TestBuildLocalImageClient:
         assert client._steps == _DEFAULT_STEPS  # noqa: SLF001
         assert client._cfg_scale == _DEFAULT_CFG_SCALE  # noqa: SLF001
 
+    def test_draw_things_uses_standard_defaults_and_ancestral_sampler(self) -> None:
+        config = AddonConfig(local_image_backend="draw_things", local_image_url="http://127.0.0.1:7860")
+        client = build_local_image_client(config)
+        assert isinstance(client, DrawThingsClient)
+        assert client._steps == _DEFAULT_STEPS  # noqa: SLF001
+        assert client._cfg_scale == _DEFAULT_CFG_SCALE  # noqa: SLF001
+        assert client._sampler_name == _DEFAULT_SAMPLER_DRAW_THINGS  # noqa: SLF001
+
 
 class TestPickSamplingDefaults:
     @pytest.mark.parametrize(
@@ -270,6 +376,15 @@ class TestValidateLocalImageBackend:
 
         assert is_valid is True
         mock_get.assert_called_once_with("http://127.0.0.1:8188/system_stats", timeout=10)
+
+    def test_draw_things_reachable(self) -> None:
+        mock_response = MagicMock(status_code=200)
+        with patch("ankiforge.local_image.client.requests.get", return_value=mock_response) as mock_get:
+            is_valid, error = validate_local_image_backend("draw_things", "http://127.0.0.1:7860/")
+
+        assert is_valid is True
+        assert error is None
+        mock_get.assert_called_once_with("http://127.0.0.1:7860/", timeout=10)
 
     def test_unreachable_returns_false(self) -> None:
         mock_response = MagicMock(status_code=404)
@@ -318,7 +433,11 @@ class TestResolveResolution:
         assert _resolve_resolution("768", checkpoint="sdxl_base.safetensors") == "768"
 
     def test_auto_detects_sdxl_checkpoint(self) -> None:
-        assert _resolve_resolution("auto", checkpoint="sd_xl_turbo.safetensors") == "1024"
+        assert _resolve_resolution("auto", checkpoint="sdxl_base.safetensors") == "1024"
+
+    def test_auto_detects_sdxl_turbo_checkpoint_as_512(self) -> None:
+        # SDXL-Turbo is distilled at 512x512, unlike base SDXL/Lightning.
+        assert _resolve_resolution("auto", checkpoint="sd_xl_turbo.safetensors") == "512"
 
     def test_auto_falls_back_to_512_for_normal_checkpoint(self) -> None:
         assert _resolve_resolution("auto", checkpoint="dreamshaper_8.safetensors") == "512"
@@ -391,11 +510,18 @@ class TestBuildLocalImageClientResolution:
         assert isinstance(client, Automatic1111Client)
         assert client._resolution == "1024"  # noqa: SLF001
 
+    def test_draw_things_defaults_to_512(self) -> None:
+        config = AddonConfig(local_image_backend="draw_things", local_image_url="http://127.0.0.1:7860")
+        client = build_local_image_client(config)
+        assert isinstance(client, DrawThingsClient)
+        assert client._resolution == "512"  # noqa: SLF001
+
     def test_comfyui_sdxl_turbo_gets_ancestral_sampler(self) -> None:
         """Regression test for the real-world checkpoint that triggered this:
         sd_xl_turbo_1.0_fp16.safetensors was still producing a fractured,
-        noise-like image even at the correct 1024px resolution, because the
-        deterministic 'euler' sampler doesn't converge in 4 steps."""
+        noise-like image, because the deterministic 'euler' sampler doesn't
+        converge in 4 steps — fixed independently of the resolution (which
+        for Turbo specifically is 512px, not the general SDXL 1024px)."""
         config = AddonConfig(
             local_image_backend="comfyui",
             local_image_url="http://127.0.0.1:8188",
@@ -404,7 +530,7 @@ class TestBuildLocalImageClientResolution:
         client = build_local_image_client(config)
         assert isinstance(client, ComfyUIClient)
         assert client._sampler_name == _DISTILLED_SAMPLER  # noqa: SLF001
-        assert client._resolution == "1024"  # noqa: SLF001
+        assert client._resolution == "512"  # noqa: SLF001
         assert client._steps == _DISTILLED_STEPS  # noqa: SLF001
 
     def test_comfyui_normal_checkpoint_gets_default_sampler(self) -> None:
