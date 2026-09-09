@@ -141,6 +141,55 @@ class TestApplyCardToNote:
         assert note["Example"] == "e"
         assert "Image" not in note.note_type()["flds"] or True  # sanity: no crash on missing field
 
+    def test_preserves_untouched_optional_fields(self) -> None:
+        """Regression test: regenerating with e.g. all audio checkboxes and
+        transcription unticked used to clobber those fields with empty
+        strings instead of leaving the note's existing content alone."""
+        note = _make_note(
+            {
+                "Word": "run",
+                "Definition": "",
+                "Example": "",
+                "Audio": "[sound:old_word.wav]",
+                "Image": "",
+                "AudioDefinition": "[sound:old_def.wav]",
+                "AudioSilence": "[sound:old_silence.wav]",
+                "AudioExample": "[sound:old_ex.wav]",
+                "Transcription": "/rʌn/",
+            }
+        )
+        # None on all optional fields — as LanguageGenerator leaves them when
+        # their checkbox was unticked for this regeneration.
+        card = GeneratedCard(
+            word="run",
+            note_type=LANGUAGE_NOTE_TYPE_NAME,
+            definition="A fresh definition",
+            example="A fresh example.",
+        )
+
+        _apply_card_to_note(note, card)
+
+        assert note["Definition"] == "A fresh definition"
+        assert note["Example"] == "A fresh example."
+        assert note["Audio"] == "[sound:old_word.wav]"
+        assert note["AudioDefinition"] == "[sound:old_def.wav]"
+        assert note["AudioSilence"] == "[sound:old_silence.wav]"
+        assert note["AudioExample"] == "[sound:old_ex.wav]"
+        assert note["Transcription"] == "/rʌn/"
+
+    @patch("ankiforge.ui.generate_dialog.save_media", return_value="uuid_new.wav")
+    def test_overwrites_optional_field_when_requested(self, mock_save_media: MagicMock) -> None:
+        """The flip side: when a part IS requested (non-None on the card),
+        it does overwrite whatever was there before."""
+        note = _make_note({"Word": "run", "Definition": "", "Example": "", "Audio": "[sound:old.wav]"})
+        card = GeneratedCard(
+            word="run", note_type=LANGUAGE_NOTE_TYPE_NAME, definition="d", example="e", audio_data=b"new-audio"
+        )
+
+        _apply_card_to_note(note, card)
+
+        assert note["Audio"] == "[sound:uuid_new.wav]"
+
 
 # ---------------------------------------------------------------------------
 # _set_button_busy

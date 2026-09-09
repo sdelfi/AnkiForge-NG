@@ -8,9 +8,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ankiforge.local_image.client import (
+    _DEFAULT_CFG_SCALE,
+    _DEFAULT_STEPS,
+    _DISTILLED_CFG_SCALE,
+    _DISTILLED_STEPS,
     Automatic1111Client,
     ComfyUIClient,
     LocalImageError,
+    _pick_sampling_defaults,
     build_local_image_client,
     validate_local_image_backend,
 )
@@ -185,6 +190,51 @@ class TestBuildLocalImageClient:
     def test_unknown_backend_returns_none(self) -> None:
         config = AddonConfig(local_image_backend="bogus", local_image_url="http://127.0.0.1:9999")
         assert build_local_image_client(config) is None
+
+    def test_automatic1111_uses_standard_defaults(self) -> None:
+        """Regression test: Automatic1111 has no checkpoint info to detect a
+        distilled model from, so it must use the safe standard defaults —
+        not the old always-4-steps default, which produced noisy garbage on
+        a normal (non-distilled) checkpoint."""
+        config = AddonConfig(local_image_backend="automatic1111", local_image_url="http://127.0.0.1:7860")
+        client = build_local_image_client(config)
+        assert isinstance(client, Automatic1111Client)
+        assert client._steps == _DEFAULT_STEPS  # noqa: SLF001
+        assert client._cfg_scale == _DEFAULT_CFG_SCALE  # noqa: SLF001
+
+    def test_comfyui_turbo_checkpoint_uses_distilled_defaults(self) -> None:
+        config = AddonConfig(
+            local_image_backend="comfyui",
+            local_image_url="http://127.0.0.1:8188",
+            local_image_checkpoint="sd_xl_turbo_1.0.safetensors",
+        )
+        client = build_local_image_client(config)
+        assert isinstance(client, ComfyUIClient)
+        assert client._steps == _DISTILLED_STEPS  # noqa: SLF001
+        assert client._cfg_scale == _DISTILLED_CFG_SCALE  # noqa: SLF001
+
+    def test_comfyui_normal_checkpoint_uses_standard_defaults(self) -> None:
+        config = AddonConfig(
+            local_image_backend="comfyui",
+            local_image_url="http://127.0.0.1:8188",
+            local_image_checkpoint="realisticVisionV60B1.safetensors",
+        )
+        client = build_local_image_client(config)
+        assert isinstance(client, ComfyUIClient)
+        assert client._steps == _DEFAULT_STEPS  # noqa: SLF001
+        assert client._cfg_scale == _DEFAULT_CFG_SCALE  # noqa: SLF001
+
+
+class TestPickSamplingDefaults:
+    @pytest.mark.parametrize(
+        "checkpoint",
+        ["sd_xl_turbo_1.0.safetensors", "SDXL-Lightning-4step.safetensors", "dreamshaper_lcm.safetensors"],
+    )
+    def test_distilled_markers_pick_low_step_defaults(self, checkpoint: str) -> None:
+        assert _pick_sampling_defaults(checkpoint) == (_DISTILLED_STEPS, _DISTILLED_CFG_SCALE)
+
+    def test_normal_checkpoint_picks_standard_defaults(self) -> None:
+        assert _pick_sampling_defaults("realisticVisionV60B1.safetensors") == (_DEFAULT_STEPS, _DEFAULT_CFG_SCALE)
 
 
 class TestValidateLocalImageBackend:

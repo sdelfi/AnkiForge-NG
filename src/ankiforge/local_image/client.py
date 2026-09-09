@@ -22,14 +22,20 @@ if TYPE_CHECKING:
     from ankiforge.models import AddonConfig
 
 _DEFAULT_TIMEOUT = 120.0
-# Tuned for distilled "Turbo" checkpoints (SD Turbo, SDXL Turbo) — the
-# lightweight models this feature's setup guide recommends. They're trained
-# for 1-4 step sampling at a near-1 CFG scale; the classic SD defaults
-# (~20 steps, cfg 7) way overcook them into a blown-out, distorted mess.
-# A normal (non-distilled) checkpoint tolerates these fine too, just with
-# less structure than it's capable of at higher step counts.
-_DEFAULT_STEPS = 4
-_DEFAULT_CFG_SCALE = 1.5
+# Standard SD sampling defaults — the safe choice for a normal (non-distilled)
+# checkpoint, which is what most users have loaded. At low step counts these
+# checkpoints don't have time to converge and produce noisy, incoherent
+# output rather than merely "less detail".
+_DEFAULT_STEPS = 20
+_DEFAULT_CFG_SCALE = 7.0
+# Distilled "Turbo"/"Lightning"/LCM checkpoints are trained for 1-4 step
+# sampling at a near-1 CFG scale — the standard defaults above way overcook
+# them into a blown-out, distorted mess. Auto-selected via
+# _pick_sampling_defaults() when the checkpoint filename says so (currently
+# only possible for ComfyUI, which takes an explicit checkpoint filename).
+_DISTILLED_STEPS = 4
+_DISTILLED_CFG_SCALE = 1.5
+_DISTILLED_CHECKPOINT_MARKERS = ("turbo", "lightning", "lcm")
 _DEFAULT_NEGATIVE_PROMPT = "text, watermark, signature, low quality, blurry"
 _COMFYUI_POLL_INTERVAL = 1.0
 _SEED_MAX = 2**32 - 1
@@ -47,6 +53,23 @@ _SIZE_PRESETS: dict[str, tuple[int, int]] = {
 def _resolve_size(size: str | None) -> tuple[int, int]:
     """Map a plugin-wide size hint to (width, height) pixels."""
     return _SIZE_PRESETS.get(size or "auto", _SIZE_PRESETS["auto"])
+
+
+def _pick_sampling_defaults(checkpoint: str) -> tuple[int, float]:
+    """Pick (steps, cfg_scale) based on whether a checkpoint name looks distilled.
+
+    Args:
+        checkpoint: Checkpoint filename, e.g. 'sd_xl_turbo_1.0.safetensors'.
+
+    Returns:
+        (steps, cfg_scale) — the low-step distilled-model defaults if the
+        name contains a marker like "turbo"/"lightning"/"lcm", otherwise the
+        standard SD defaults.
+    """
+    name = checkpoint.lower()
+    if any(marker in name for marker in _DISTILLED_CHECKPOINT_MARKERS):
+        return _DISTILLED_STEPS, _DISTILLED_CFG_SCALE
+    return _DEFAULT_STEPS, _DEFAULT_CFG_SCALE
 
 
 class LocalImageError(Exception):
@@ -296,9 +319,11 @@ def build_local_image_client(config: AddonConfig) -> LocalImageClient | None:
         return Automatic1111Client(config.local_image_url)
 
     if config.local_image_backend == "comfyui":
-        if not config.local_image_checkpoint.strip():
+        checkpoint = config.local_image_checkpoint.strip()
+        if not checkpoint:
             return None
-        return ComfyUIClient(config.local_image_url, config.local_image_checkpoint)
+        steps, cfg_scale = _pick_sampling_defaults(checkpoint)
+        return ComfyUIClient(config.local_image_url, checkpoint, steps=steps, cfg_scale=cfg_scale)
 
     return None
 

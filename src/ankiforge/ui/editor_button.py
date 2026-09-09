@@ -84,11 +84,28 @@ def _build_regenerate_request(word: str, config: AddonConfig, options: LanguageO
     )
 
 
+# Fields tied to an optional GeneratedCard attribute that stays None when
+# the corresponding checkbox wasn't ticked for this regeneration (see
+# LanguageGenerator.generate). _apply_card_to_note leaves these fields
+# untouched rather than clobbering them with the "" placeholder
+# _build_note_fields uses for a brand-new note.
+_OPTIONAL_FIELD_SOURCE = {
+    "Audio": "audio_data",
+    "Image": "image_data",
+    "AudioDefinition": "audio_definition",
+    "AudioExample": "audio_example",
+    "AudioSilence": "audio_silence",
+    "Transcription": "transcription",
+}
+
+
 def _apply_card_to_note(note: Note, card: GeneratedCard) -> None:
     """Write a regenerated card's fields into an existing note, in place.
 
     Reuses the same GeneratedCard → field mapping (and media saving) as
     regular generation, restricted to fields that exist on this note type.
+    Fields for parts that weren't requested this round (e.g. audio when its
+    checkbox was unticked) are left as they were, instead of being cleared.
 
     Args:
         note: Note to update (mutated in place).
@@ -99,8 +116,12 @@ def _apply_card_to_note(note: Note, card: GeneratedCard) -> None:
     fields = _build_note_fields(card)
     field_names = _note_field_names(note)
     for name, value in fields.items():
-        if name in field_names:
-            note[name] = value
+        if name not in field_names:
+            continue
+        source_attr = _OPTIONAL_FIELD_SOURCE.get(name)
+        if source_attr is not None and getattr(card, source_attr) is None:
+            continue  # not requested this round — leave existing content alone
+        note[name] = value
 
 
 # ---------------------------------------------------------------------------
