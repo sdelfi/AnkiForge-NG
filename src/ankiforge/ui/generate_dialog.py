@@ -797,7 +797,7 @@ class GenerateDialog:
         """Show dialog with crypto address for donation."""
         from aqt.qt import QApplication, QDialog, QLabel, QPushButton, Qt, QVBoxLayout
 
-        address = "0x34f58CF2BE6073f12b2c3c6aE9f8c31983A3f5fE"
+        address = "0xb67934785132FD5b4DEcEaF70780F5E8bA48580f"
 
         dlg = QDialog(self._dialog)
         dlg.setWindowTitle("Support the Project")

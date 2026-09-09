@@ -181,10 +181,12 @@ src/ankiforge/
 
 ## Support the Project
 
-AnkiForge NG is free and open source. This fork builds on the original AnkiForge by Xpom1 — if you'd like to support the original author's work directly:
+AnkiForge NG is free and open source. If you find it useful, consider supporting development of this fork:
 
-**EVM:** `0x34f58CF2BE6073f12b2c3c6aE9f8c31983A3f5fE`
+**EVM:** `0xb67934785132FD5b4DEcEaF70780F5E8bA48580f`
 <br>Networks: Ethereum, Base, Arbitrum, Avalanche
+
+This fork builds on the original [AnkiForge](https://github.com/Xpom1/AnkiForge) by Xpom1.
 
 ## License
 
