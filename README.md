@@ -141,12 +141,14 @@ uv run mypy src/                 # type check
 
 ### Releasing
 
-Bump `__version__` in `src/ankiforge/__init__.py`, merge into the `release`
-branch, and push — [.github/workflows/release.yml](.github/workflows/release.yml)
-builds the `.ankiaddon` and publishes it as a GitHub Release tagged `vX.Y.Z`.
-AnkiWeb has no upload API, so the new build still needs to be uploaded there
-by hand at https://ankiweb.net/shared/addons/ ("Share Add-on" → add a branch
-with the new version).
+Bump `__version__` in `src/ankiforge/__init__.py` and push to `main` —
+[.github/workflows/release.yml](.github/workflows/release.yml) builds the
+`.ankiaddon` and publishes it as a GitHub Release tagged `vX.Y.Z`. Ordinary
+commits are a no-op for this (the workflow skips creating a release if that
+version's tag already exists), so nothing extra needs pushing when the
+version hasn't changed. AnkiWeb has no upload API, so the new build still
+needs to be uploaded there by hand at https://ankiweb.net/shared/addons/
+("Share Add-on" → add a branch with the new version).
 
 ## Project Structure
 
