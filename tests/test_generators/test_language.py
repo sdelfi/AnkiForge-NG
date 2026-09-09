@@ -586,6 +586,28 @@ class TestPrompt:
         image_prompt = mock_client.generate_image.call_args[0][0]
         assert "apple" in image_prompt.lower() or "tree" in image_prompt.lower()
 
+    def test_image_prompt_emphasizes_the_word_as_main_focus(
+        self, generator: LanguageGenerator, mock_client: MagicMock
+    ) -> None:
+        """Regression test: a prompt built only from the example sentence can
+        produce an image that illustrates ambient scene details (a room, a
+        couch) without depicting the target word/concept at all — e.g. "late
+        payer" rendering as an empty living room. The word itself must be
+        named and called out as the required visual focus."""
+        from ankiforge.models import LanguageOptions
+
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="late payer",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(include_photo=True),
+        )
+        generator.generate(request, MagicMock())
+        image_prompt = mock_client.generate_image.call_args[0][0]
+        assert image_prompt.lower().count("late payer") >= 2
+        assert "main visual focus" in image_prompt.lower()
+
 
 # ---------------------------------------------------------------------------
 # _generate_silence_wav

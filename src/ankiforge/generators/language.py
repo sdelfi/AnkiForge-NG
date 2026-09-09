@@ -56,14 +56,20 @@ _DEFAULT_SYSTEM_PROMPT = (
 )
 
 _IMAGE_PROMPT_TEMPLATE = (
-    "Create an illustration for a language flashcard. "
+    "Create an illustration for a language flashcard for the word/phrase \"{word}\". "
     'The scene depicts: "{example}". '
-    "Clean style, no text, no watermarks. Suitable for a flashcard."
+    'The image must clearly and unambiguously depict "{word}" as the main visual '
+    "focus — a viewer should be able to guess the word just by looking at the image, "
+    "without reading the sentence. Clean style, no text, no watermarks. Suitable for a flashcard."
 )
 
 _DETAILED_IMAGE_PROMPT_TEMPLATE = (
-    "Create a stunning, ultra-high-quality photorealistic image for a language flashcard. "
+    "Create a stunning, ultra-high-quality photorealistic image for a language flashcard "
+    'for the word/phrase "{word}". '
     'The scene vividly depicts the sentence: "{example}". '
+    'The image must clearly and unambiguously depict "{word}" as the main visual '
+    "focus — a viewer should be able to guess the word just by looking at the image, "
+    "without reading the sentence. "
     "The image should be visually rich with cinematic lighting, vivid colors, and fine details. "
     "Composition: centered subject with a complementary background that reinforces the meaning. "
     "Style: professional photography or digital art, magazine-cover quality. "
@@ -272,7 +278,7 @@ class LanguageGenerator:
             image_data: bytes | None = None
             if opts.include_photo and example:
                 template = _DETAILED_IMAGE_PROMPT_TEMPLATE if opts.detailed_image else _IMAGE_PROMPT_TEMPLATE
-                image_prompt = template.format(example=example)
+                image_prompt = template.format(word=word, example=example)
                 size = opts.image_size if opts.image_size != "auto" else None
                 image_data = retry_api_call(
                     lambda p=image_prompt, sz=size: self._client.generate_image(p, self._image_model, size=sz),
