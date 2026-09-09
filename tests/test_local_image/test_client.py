@@ -9,13 +9,16 @@ import pytest
 
 from ankiforge.local_image.client import (
     _DEFAULT_CFG_SCALE,
+    _DEFAULT_SAMPLER,
     _DEFAULT_STEPS,
     _DISTILLED_CFG_SCALE,
+    _DISTILLED_SAMPLER,
     _DISTILLED_STEPS,
     _SIZE_TIERS,
     Automatic1111Client,
     ComfyUIClient,
     LocalImageError,
+    _apply_advanced_overrides,
     _looks_sdxl_checkpoint,
     _pick_sampling_defaults,
     _resolve_resolution,
@@ -234,11 +237,15 @@ class TestPickSamplingDefaults:
         "checkpoint",
         ["sd_xl_turbo_1.0.safetensors", "SDXL-Lightning-4step.safetensors", "dreamshaper_lcm.safetensors"],
     )
-    def test_distilled_markers_pick_low_step_defaults(self, checkpoint: str) -> None:
-        assert _pick_sampling_defaults(checkpoint) == (_DISTILLED_STEPS, _DISTILLED_CFG_SCALE)
+    def test_distilled_markers_pick_low_step_ancestral_defaults(self, checkpoint: str) -> None:
+        assert _pick_sampling_defaults(checkpoint) == (_DISTILLED_STEPS, _DISTILLED_CFG_SCALE, _DISTILLED_SAMPLER)
 
     def test_normal_checkpoint_picks_standard_defaults(self) -> None:
-        assert _pick_sampling_defaults("realisticVisionV60B1.safetensors") == (_DEFAULT_STEPS, _DEFAULT_CFG_SCALE)
+        assert _pick_sampling_defaults("realisticVisionV60B1.safetensors") == (
+            _DEFAULT_STEPS,
+            _DEFAULT_CFG_SCALE,
+            _DEFAULT_SAMPLER,
+        )
 
 
 class TestValidateLocalImageBackend:
@@ -383,3 +390,93 @@ class TestBuildLocalImageClientResolution:
         client = build_local_image_client(config)
         assert isinstance(client, Automatic1111Client)
         assert client._resolution == "1024"  # noqa: SLF001
+
+    def test_comfyui_sdxl_turbo_gets_ancestral_sampler(self) -> None:
+        """Regression test for the real-world checkpoint that triggered this:
+        sd_xl_turbo_1.0_fp16.safetensors was still producing a fractured,
+        noise-like image even at the correct 1024px resolution, because the
+        deterministic 'euler' sampler doesn't converge in 4 steps."""
+        config = AddonConfig(
+            local_image_backend="comfyui",
+            local_image_url="http://127.0.0.1:8188",
+            local_image_checkpoint="sd_xl_turbo_1.0_fp16.safetensors",
+        )
+        client = build_local_image_client(config)
+        assert isinstance(client, ComfyUIClient)
+        assert client._sampler_name == _DISTILLED_SAMPLER  # noqa: SLF001
+        assert client._resolution == "1024"  # noqa: SLF001
+        assert client._steps == _DISTILLED_STEPS  # noqa: SLF001
+
+    def test_comfyui_normal_checkpoint_gets_default_sampler(self) -> None:
+        config = AddonConfig(
+            local_image_backend="comfyui",
+            local_image_url="http://127.0.0.1:8188",
+            local_image_checkpoint="dreamshaper_8.safetensors",
+        )
+        client = build_local_image_client(config)
+        assert isinstance(client, ComfyUIClient)
+        assert client._sampler_name == _DEFAULT_SAMPLER  # noqa: SLF001
+
+
+# ---------------------------------------------------------------------------
+# _apply_advanced_overrides
+# ---------------------------------------------------------------------------
+
+
+class TestApplyAdvancedOverrides:
+    def test_empty_string_is_no_op(self) -> None:
+        result = _apply_advanced_overrides(20, 7.0, "euler", "512", "")
+        assert result == (20, 7.0, "euler", "512")
+
+    def test_invalid_json_is_no_op(self) -> None:
+        result = _apply_advanced_overrides(20, 7.0, "euler", "512", "{not valid json")
+        assert result == (20, 7.0, "euler", "512")
+
+    def test_non_object_json_is_no_op(self) -> None:
+        result = _apply_advanced_overrides(20, 7.0, "euler", "512", "[1, 2, 3]")
+        assert result == (20, 7.0, "euler", "512")
+
+    def test_overrides_recognized_keys(self) -> None:
+        raw = '{"steps": 8, "cfg_scale": 2.5, "sampler_name": "dpmpp_2m_sde", "resolution": "768"}'
+        result = _apply_advanced_overrides(20, 7.0, "euler", "512", raw)
+        assert result == (8, 2.5, "dpmpp_2m_sde", "768")
+
+    def test_partial_overrides_leave_others_at_default(self) -> None:
+        result = _apply_advanced_overrides(20, 7.0, "euler", "512", '{"steps": 6}')
+        assert result == (6, 7.0, "euler", "512")
+
+    def test_unrecognized_keys_are_ignored(self) -> None:
+        result = _apply_advanced_overrides(20, 7.0, "euler", "512", '{"bogus": 123, "steps": 5}')
+        assert result == (5, 7.0, "euler", "512")
+
+    def test_wrong_typed_values_are_ignored(self) -> None:
+        raw = '{"steps": "not a number", "cfg_scale": true, "sampler_name": 123}'
+        result = _apply_advanced_overrides(20, 7.0, "euler", "512", raw)
+        assert result == (20, 7.0, "euler", "512")
+
+
+class TestBuildLocalImageClientAdvancedOverrides:
+    def test_comfyui_advanced_overrides_win_over_auto_detection(self) -> None:
+        config = AddonConfig(
+            local_image_backend="comfyui",
+            local_image_url="http://127.0.0.1:8188",
+            local_image_checkpoint="sd_xl_turbo_1.0_fp16.safetensors",
+            local_image_advanced='{"steps": 12, "cfg_scale": 3, "sampler_name": "dpmpp_2m", "resolution": "768"}',
+        )
+        client = build_local_image_client(config)
+        assert isinstance(client, ComfyUIClient)
+        assert client._steps == 12  # noqa: SLF001
+        assert client._cfg_scale == 3  # noqa: SLF001
+        assert client._sampler_name == "dpmpp_2m"  # noqa: SLF001
+        assert client._resolution == "768"  # noqa: SLF001
+
+    def test_automatic1111_advanced_overrides_apply(self) -> None:
+        config = AddonConfig(
+            local_image_backend="automatic1111",
+            local_image_url="http://127.0.0.1:7860",
+            local_image_advanced='{"steps": 10, "sampler_name": "euler_ancestral"}',
+        )
+        client = build_local_image_client(config)
+        assert isinstance(client, Automatic1111Client)
+        assert client._steps == 10  # noqa: SLF001
+        assert client._sampler_name == "euler_ancestral"  # noqa: SLF001

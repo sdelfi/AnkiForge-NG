@@ -137,3 +137,10 @@ class AddonConfig:
     # tiled/fractured look of running them below their native resolution —
     # set this explicitly if a checkpoint doesn't match the auto-detection.
     local_image_resolution: str = "auto"
+    # Optional raw JSON overrides for steps/cfg_scale/sampler_name/resolution,
+    # applied on top of the auto-picked values — the escape hatch for a
+    # checkpoint or setup the auto-detection heuristics get wrong (e.g. a
+    # non-distilled SDXL checkpoint, or a preferred sampler), without needing
+    # a code change. E.g. '{"steps": 8, "cfg_scale": 2, "sampler_name": "dpmpp_2m_sde"}'.
+    # See ankiforge.local_image.client._apply_advanced_overrides.
+    local_image_advanced: str = ""

@@ -94,6 +94,7 @@ def _dict_to_config(data: dict[str, object] | None) -> AddonConfig:
         local_image_url=str(data.get("local_image_url", defaults.local_image_url)),
         local_image_checkpoint=str(data.get("local_image_checkpoint", defaults.local_image_checkpoint)),
         local_image_resolution=str(data.get("local_image_resolution", defaults.local_image_resolution)),
+        local_image_advanced=str(data.get("local_image_advanced", defaults.local_image_advanced)),
     )
 
 

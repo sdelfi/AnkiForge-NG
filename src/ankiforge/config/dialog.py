@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from ankiforge.config.manager import get_config, save_config, validate_api_key, validate_custom_endpoint
@@ -26,6 +27,7 @@ _LOCAL_IMAGE_RESOLUTIONS = [
     ("768", "768×768"),
     ("1024", "1024×1024 (SDXL)"),
 ]
+_LOCAL_IMAGE_ADVANCED_KEYS = ("steps", "cfg_scale", "sampler_name", "resolution")
 
 if TYPE_CHECKING:
     from aqt.main import AnkiQt  # type: ignore[import-not-found]
@@ -92,6 +94,7 @@ def _build_config_from_dialog_state(
     local_image_url: str = "",
     local_image_checkpoint: str = "",
     local_image_resolution: str = "auto",
+    local_image_advanced: str = "",
 ) -> AddonConfig:
     """Build AddonConfig from dialog values.
 
@@ -109,6 +112,8 @@ def _build_config_from_dialog_state(
         local_image_url: Base URL of the local image generation backend, if any.
         local_image_checkpoint: Checkpoint filename (ComfyUI only).
         local_image_resolution: "auto", "512", "768", or "1024".
+        local_image_advanced: Optional raw JSON overrides for steps/cfg_scale/
+            sampler_name/resolution — see AddonConfig.local_image_advanced.
 
     Returns:
         Configured AddonConfig.
@@ -130,6 +135,7 @@ def _build_config_from_dialog_state(
         local_image_url=local_image_url.strip(),
         local_image_checkpoint=local_image_checkpoint.strip(),
         local_image_resolution=local_image_resolution,
+        local_image_advanced=local_image_advanced.strip(),
     )
 
 
@@ -405,6 +411,23 @@ class SettingsDialog:
         )
         local_image_layout.addRow("Resolution:", self._local_image_resolution_combo)
 
+        self._local_image_advanced_input = QLineEdit()
+        self._local_image_advanced_input.setPlaceholderText(
+            '{"steps": 8, "cfg_scale": 2, "sampler_name": "dpmpp_2m_sde"}'
+        )
+        self._local_image_advanced_input.setToolTip(
+            "Optional JSON overrides for steps / cfg_scale / sampler_name / resolution, "
+            "applied on top of the auto-picked values above — for a checkpoint or sampler "
+            "preference the automatic detection doesn't cover. Leave empty to just use "
+            "those. Recognized sampler_name values are whatever your ComfyUI/Automatic1111 "
+            "install supports (e.g. 'euler', 'euler_ancestral', 'dpmpp_2m', 'dpmpp_2m_sde')."
+        )
+        self._local_image_advanced_input.textChanged.connect(self._on_local_image_advanced_changed)
+        local_image_layout.addRow("Advanced (JSON):", self._local_image_advanced_input)
+
+        self._local_image_advanced_status_label = QLabel("")
+        local_image_layout.addRow("", self._local_image_advanced_status_label)
+
         local_image_connect_row = QHBoxLayout()
         local_image_connect_btn = QPushButton("Test connection")
         local_image_connect_btn.clicked.connect(self._on_test_local_image)
@@ -505,6 +528,7 @@ class SettingsDialog:
             0,
         )
         self._local_image_resolution_combo.setCurrentIndex(resolution_index)
+        self._local_image_advanced_input.setText(config.local_image_advanced)
         self._update_local_image_visibility()
 
         # Show cached values
@@ -611,6 +635,34 @@ class SettingsDialog:
     def _on_local_image_backend_changed(self) -> None:
         """Backend combo change handler — update field visibility/placeholder."""
         self._update_local_image_visibility()
+
+    def _on_local_image_advanced_changed(self) -> None:
+        """Live-validate the Advanced (JSON) field as the user types."""
+        text = self._local_image_advanced_input.text().strip()
+        if not text:
+            self._local_image_advanced_status_label.setText("")
+            return
+
+        try:
+            data = json.loads(text)
+        except ValueError as e:
+            _set_status(self._local_image_advanced_status_label, f"Invalid JSON: {e}", ok=False)
+            return
+
+        if not isinstance(data, dict):
+            _set_status(self._local_image_advanced_status_label, "Must be a JSON object", ok=False)
+            return
+
+        unknown = sorted(set(data) - set(_LOCAL_IMAGE_ADVANCED_KEYS))
+        if unknown:
+            _set_status(
+                self._local_image_advanced_status_label,
+                f"Unrecognized key(s), ignored: {', '.join(unknown)}",
+                ok=False,
+            )
+            return
+
+        _set_status(self._local_image_advanced_status_label, "Valid", ok=True)
 
     def _on_test_local_image(self) -> None:
         """Test connection button handler for the local image generation backend."""
@@ -820,6 +872,7 @@ class SettingsDialog:
             local_image_url=self._local_image_url_input.text(),
             local_image_checkpoint=self._local_image_checkpoint_input.text(),
             local_image_resolution=self._local_image_resolution_combo.currentData() or "auto",
+            local_image_advanced=self._local_image_advanced_input.text().strip(),
         )
         save_config(config)
         self._dialog.accept()

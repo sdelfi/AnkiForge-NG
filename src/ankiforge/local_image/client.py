@@ -12,6 +12,7 @@ custom OpenAI-compatible endpoint.
 from __future__ import annotations
 
 import base64
+import json
 import random
 import time
 from typing import TYPE_CHECKING, Protocol
@@ -28,13 +29,23 @@ _DEFAULT_TIMEOUT = 120.0
 # output rather than merely "less detail".
 _DEFAULT_STEPS = 20
 _DEFAULT_CFG_SCALE = 7.0
+_DEFAULT_SAMPLER = "euler"
 # Distilled "Turbo"/"Lightning"/LCM checkpoints are trained for 1-4 step
 # sampling at a near-1 CFG scale — the standard defaults above way overcook
 # them into a blown-out, distorted mess. Auto-selected via
 # _pick_sampling_defaults() when the checkpoint filename says so (currently
 # only possible for ComfyUI, which takes an explicit checkpoint filename).
+#
+# Sampler matters here as much as steps/cfg: plain "euler" is a deterministic
+# sampler that expects a full-length step schedule to converge smoothly.
+# Forced through only 1-4 steps it produces a fractured, tiled mess rather
+# than a coherent (if soft) image — this is a *different* failure mode from
+# the steps/cfg mismatch, and persists even at the correct resolution.
+# Stability AI's own SDXL-Turbo model card recommends the ancestral variant
+# (adds noise back in at each step) specifically for few-step sampling.
 _DISTILLED_STEPS = 4
 _DISTILLED_CFG_SCALE = 1.5
+_DISTILLED_SAMPLER = "euler_ancestral"
 _DISTILLED_CHECKPOINT_MARKERS = ("turbo", "lightning", "lcm")
 _DEFAULT_NEGATIVE_PROMPT = "text, watermark, signature, low quality, blurry"
 _COMFYUI_POLL_INTERVAL = 1.0
@@ -82,21 +93,21 @@ def _looks_sdxl_checkpoint(checkpoint: str) -> bool:
     return "xl" in tokens or any(t.endswith("xl") and len(t) > 2 for t in tokens)
 
 
-def _pick_sampling_defaults(checkpoint: str) -> tuple[int, float]:
-    """Pick (steps, cfg_scale) based on whether a checkpoint name looks distilled.
+def _pick_sampling_defaults(checkpoint: str) -> tuple[int, float, str]:
+    """Pick (steps, cfg_scale, sampler_name) based on whether a checkpoint looks distilled.
 
     Args:
         checkpoint: Checkpoint filename, e.g. 'sd_xl_turbo_1.0.safetensors'.
 
     Returns:
-        (steps, cfg_scale) — the low-step distilled-model defaults if the
-        name contains a marker like "turbo"/"lightning"/"lcm", otherwise the
-        standard SD defaults.
+        (steps, cfg_scale, sampler_name) — the low-step, ancestral-sampler
+        distilled-model defaults if the name contains a marker like
+        "turbo"/"lightning"/"lcm", otherwise the standard SD defaults.
     """
     name = checkpoint.lower()
     if any(marker in name for marker in _DISTILLED_CHECKPOINT_MARKERS):
-        return _DISTILLED_STEPS, _DISTILLED_CFG_SCALE
-    return _DEFAULT_STEPS, _DEFAULT_CFG_SCALE
+        return _DISTILLED_STEPS, _DISTILLED_CFG_SCALE, _DISTILLED_SAMPLER
+    return _DEFAULT_STEPS, _DEFAULT_CFG_SCALE, _DEFAULT_SAMPLER
 
 
 def _resolve_resolution(setting: str, *, checkpoint: str | None) -> str:
@@ -116,6 +127,65 @@ def _resolve_resolution(setting: str, *, checkpoint: str | None) -> str:
     if checkpoint and _looks_sdxl_checkpoint(checkpoint):
         return "1024"
     return "512"
+
+
+# Advanced JSON override keys, and how to coerce each from the parsed JSON
+# value. Keeping this as one small JSON escape hatch — rather than a combo
+# box per parameter — covers checkpoints/samplers the auto-detection
+# heuristics above don't recognize, without needing a code change each time.
+_ADVANCED_OVERRIDE_KEYS = ("steps", "cfg_scale", "sampler_name", "resolution")
+
+
+def _apply_advanced_overrides(
+    steps: int, cfg_scale: float, sampler_name: str, resolution: str, raw_json: str
+) -> tuple[int, float, str, str]:
+    """Apply user-supplied JSON overrides on top of the auto-picked defaults.
+
+    Args:
+        steps: Auto-picked step count.
+        cfg_scale: Auto-picked CFG scale.
+        sampler_name: Auto-picked sampler.
+        resolution: Auto-picked resolution tier.
+        raw_json: Raw JSON object string, e.g.
+            '{"steps": 8, "cfg_scale": 2, "sampler_name": "dpmpp_2m_sde"}'.
+            Empty, invalid, or non-object JSON is ignored — falls back to
+            the auto-picked values, untouched. Unrecognized or wrong-typed
+            keys are ignored individually rather than failing the whole
+            override; anything is a no-op that's always safe to leave in
+            Settings.
+
+    Returns:
+        (steps, cfg_scale, sampler_name, resolution) with any valid
+        overrides applied.
+    """
+    text = raw_json.strip()
+    if not text:
+        return steps, cfg_scale, sampler_name, resolution
+
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return steps, cfg_scale, sampler_name, resolution
+    if not isinstance(data, dict):
+        return steps, cfg_scale, sampler_name, resolution
+
+    raw_steps = data.get("steps")
+    if isinstance(raw_steps, (int, float)) and not isinstance(raw_steps, bool):
+        steps = int(raw_steps)
+
+    raw_cfg = data.get("cfg_scale")
+    if isinstance(raw_cfg, (int, float)) and not isinstance(raw_cfg, bool):
+        cfg_scale = float(raw_cfg)
+
+    raw_sampler = data.get("sampler_name")
+    if isinstance(raw_sampler, str) and raw_sampler.strip():
+        sampler_name = raw_sampler.strip()
+
+    raw_resolution = data.get("resolution")
+    if isinstance(raw_resolution, str) and raw_resolution.strip():
+        resolution = raw_resolution.strip()
+
+    return steps, cfg_scale, sampler_name, resolution
 
 
 class LocalImageError(Exception):
@@ -143,6 +213,7 @@ class Automatic1111Client:
         *,
         steps: int = _DEFAULT_STEPS,
         cfg_scale: float = _DEFAULT_CFG_SCALE,
+        sampler_name: str = _DEFAULT_SAMPLER,
         resolution: str = "512",
         negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
         timeout: float = _DEFAULT_TIMEOUT,
@@ -150,6 +221,7 @@ class Automatic1111Client:
         self.base_url = base_url.rstrip("/")
         self._steps = steps
         self._cfg_scale = cfg_scale
+        self._sampler_name = sampler_name
         self._resolution = resolution
         self._negative_prompt = negative_prompt
         self._timeout = timeout
@@ -172,6 +244,7 @@ class Automatic1111Client:
         body = {
             "prompt": prompt,
             "negative_prompt": self._negative_prompt,
+            "sampler_name": self._sampler_name,
             "steps": self._steps,
             "cfg_scale": self._cfg_scale,
             "width": width,
@@ -209,6 +282,7 @@ def _build_comfyui_workflow(
     steps: int,
     cfg: float,
     seed: int,
+    sampler_name: str = _DEFAULT_SAMPLER,
 ) -> dict[str, object]:
     """Build a minimal txt2img node graph: checkpoint -> CLIP encode -> KSampler -> VAE decode -> save."""
     return {
@@ -221,7 +295,7 @@ def _build_comfyui_workflow(
                 "model": ["4", 0],
                 "negative": ["7", 0],
                 "positive": ["6", 0],
-                "sampler_name": "euler",
+                "sampler_name": sampler_name,
                 "scheduler": "normal",
                 "seed": seed,
                 "steps": steps,
@@ -252,6 +326,7 @@ class ComfyUIClient:
         *,
         steps: int = _DEFAULT_STEPS,
         cfg_scale: float = _DEFAULT_CFG_SCALE,
+        sampler_name: str = _DEFAULT_SAMPLER,
         resolution: str = "512",
         negative_prompt: str = _DEFAULT_NEGATIVE_PROMPT,
         timeout: float = _DEFAULT_TIMEOUT,
@@ -264,6 +339,7 @@ class ComfyUIClient:
         self._checkpoint = checkpoint.strip()
         self._steps = steps
         self._cfg_scale = cfg_scale
+        self._sampler_name = sampler_name
         self._resolution = resolution
         self._negative_prompt = negative_prompt
         self._timeout = timeout
@@ -286,7 +362,15 @@ class ComfyUIClient:
         width, height = _resolve_size(size, self._resolution)
         seed = random.randint(0, _SEED_MAX)  # noqa: S311
         workflow = _build_comfyui_workflow(
-            prompt, self._negative_prompt, self._checkpoint, width, height, self._steps, self._cfg_scale, seed
+            prompt,
+            self._negative_prompt,
+            self._checkpoint,
+            width,
+            height,
+            self._steps,
+            self._cfg_scale,
+            seed,
+            self._sampler_name,
         )
 
         try:
@@ -367,19 +451,34 @@ def build_local_image_client(config: AddonConfig) -> LocalImageClient | None:
 
     if config.local_image_backend == "automatic1111":
         # No checkpoint info is available for Automatic1111 (it just uses
-        # whatever's loaded in the WebUI), so "auto" can't detect SDXL here —
-        # falls back to the SD1.5-safe 512 tier unless overridden in Settings.
+        # whatever's loaded in the WebUI), so "auto" can't detect SDXL or a
+        # distilled model here — falls back to the standard SD1.5-safe
+        # defaults unless overridden in Settings (either the Resolution
+        # dropdown, or the Advanced JSON field for steps/cfg/sampler too).
         resolution = _resolve_resolution(config.local_image_resolution, checkpoint=None)
-        return Automatic1111Client(config.local_image_url, resolution=resolution)
+        steps, cfg_scale, sampler_name, resolution = _apply_advanced_overrides(
+            _DEFAULT_STEPS, _DEFAULT_CFG_SCALE, _DEFAULT_SAMPLER, resolution, config.local_image_advanced
+        )
+        return Automatic1111Client(
+            config.local_image_url, steps=steps, cfg_scale=cfg_scale, sampler_name=sampler_name, resolution=resolution
+        )
 
     if config.local_image_backend == "comfyui":
         checkpoint = config.local_image_checkpoint.strip()
         if not checkpoint:
             return None
-        steps, cfg_scale = _pick_sampling_defaults(checkpoint)
+        steps, cfg_scale, sampler_name = _pick_sampling_defaults(checkpoint)
         resolution = _resolve_resolution(config.local_image_resolution, checkpoint=checkpoint)
+        steps, cfg_scale, sampler_name, resolution = _apply_advanced_overrides(
+            steps, cfg_scale, sampler_name, resolution, config.local_image_advanced
+        )
         return ComfyUIClient(
-            config.local_image_url, checkpoint, steps=steps, cfg_scale=cfg_scale, resolution=resolution
+            config.local_image_url,
+            checkpoint,
+            steps=steps,
+            cfg_scale=cfg_scale,
+            sampler_name=sampler_name,
+            resolution=resolution,
         )
 
     return None
