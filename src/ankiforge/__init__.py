@@ -3,7 +3,7 @@
 Fork of AnkiForge (https://github.com/Xpom1/AnkiForge) by Xpom1, GPL-3.0.
 """
 
-__version__ = "0.2.14"
+__version__ = "0.2.15"
 
 
 def _register_addon() -> None:

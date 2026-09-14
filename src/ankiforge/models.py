@@ -5,21 +5,32 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-# Appended to every generated image prompt (all generators, all backends).
-# Guards against checkpoints — especially uncensored/community local ones —
-# defaulting to sexualized depictions of people for prompts that have
-# nothing to do with that (e.g. an SDXL-Turbo variant rendering exaggerated
-# cleavage for a plain "two coworkers talking" scene). Editable in Settings
-# so this doesn't need a code change/release to tune per checkpoint.
-DEFAULT_IMAGE_PROMPT_EXTRA = (
-    "Modest and tasteful, appropriate for all audiences: fully clothed, no cleavage, "
-    "no exaggerated body proportions, no nudity, no sexualized content."
+# Appended to every generated image prompt (all generators, all backends) —
+# a free-form extra instruction, empty by default. Kept as an escape hatch
+# editable in Settings; NOT where content restrictions belong (see
+# DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT below for why).
+DEFAULT_IMAGE_PROMPT_EXTRA = ""
+
+# Negative prompt for local image backends (Automatic1111/Draw Things/
+# ComfyUI) — see ankiforge.local_image.client. A negative prompt genuinely
+# excludes the listed concepts from generation; unlike restrictive wording
+# stuffed into the positive prompt (which CLIP-based text encoders don't
+# negate reliably — confirmed empirically: a checkpoint biased toward
+# exaggerated proportions kept doing so with "no cleavage, no nudity" in
+# the positive prompt), this actually suppresses them. OpenRouter/cloud
+# image models have no equivalent field, so this only applies locally.
+DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT = (
+    "text, letters, words, writing, typography, diagram, quiz, watermark, signature, "
+    "nsfw, nudity, cleavage, exaggerated breasts, sexualized, revealing clothing, "
+    "low quality, blurry"
 )
 
 # Editable image prompt templates — Settings lets you rewrite these per
 # generation mode without a code change. Available placeholders are called
 # out in each one; an unrecognized {placeholder} left in by a typo raises a
 # KeyError at generation time rather than silently mangling the prompt.
+# Deliberately positive-only descriptions — content restrictions (no text,
+# no NSFW, ...) belong in DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT above instead.
 
 # Language cards (Language mode) — placeholders: {word}, {example}
 DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE = (
@@ -27,9 +38,7 @@ DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE = (
     'The scene depicts: "{example}". '
     'The image must clearly and unambiguously depict "{word}" as the main visual '
     "focus — a viewer should be able to guess the word just by looking at the image, "
-    "without reading the sentence. Clean style — just the illustrated scene itself, "
-    "no text, no letters, no words, no writing, no signage, no diagrams, no quiz or "
-    "card layout, no watermarks."
+    "without reading the sentence. Clean style, just the illustrated scene itself."
 )
 
 # Language cards, "Detailed image" option — placeholders: {word}, {example}
@@ -42,17 +51,11 @@ DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED = (
     "without reading the sentence. "
     "The image should be visually rich with cinematic lighting, vivid colors, and fine details. "
     "Composition: centered subject with a complementary background that reinforces the meaning. "
-    "Style: professional photography or digital art, magazine-cover quality. Mood: evocative, "
-    "memorable — just the illustrated scene itself, no text, no letters, no words, no writing, "
-    "no signage, no diagrams, no quiz or card layout, no watermarks, no logos."
+    "Style: professional photography or digital art, magazine-cover quality. Mood: evocative, memorable."
 )
 
 # QA+Image and From Material (with images) modes — placeholder: {topic}
-DEFAULT_QA_IMAGE_PROMPT_TEMPLATE = (
-    "A simple, clear illustration depicting: '{topic}'. "
-    "Clean educational style — just the illustrated scene itself, no text, no letters, "
-    "no words, no writing, no signage, no diagrams."
-)
+DEFAULT_QA_IMAGE_PROMPT_TEMPLATE = "A simple, clear illustration depicting: '{topic}'. Clean educational style."
 
 
 class GenerationMode(Enum):
@@ -193,6 +196,10 @@ class AddonConfig:
     # a code change. E.g. '{"steps": 8, "cfg_scale": 2, "sampler_name": "dpmpp_2m_sde"}'.
     # See ankiforge.local_image.client._apply_advanced_overrides.
     local_image_advanced: str = ""
+    # Negative prompt for local image backends only (Automatic1111/Draw
+    # Things/ComfyUI have this concept; OpenRouter/cloud image models don't)
+    # — see DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT above.
+    local_image_negative_prompt: str = DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT
     # Editable image prompt templates, one per generation mode — see the
     # DEFAULT_*_TEMPLATE constants above for placeholders and defaults.
     image_prompt_template: str = DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE

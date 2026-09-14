@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Protocol
 
 import requests
 
+from ankiforge.models import DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT
+
 if TYPE_CHECKING:
     from ankiforge.models import AddonConfig
 
@@ -55,26 +57,10 @@ _DISTILLED_STEPS = 4
 _DISTILLED_CFG_SCALE = 1.5
 _DISTILLED_SAMPLER = "euler_ancestral"
 _DISTILLED_CHECKPOINT_MARKERS = ("turbo", "lightning", "lcm")
-# "text" alone barely dents it — diffusion checkpoints often associate the
-# word "flashcard"/"quiz" (which our own prompt templates used to lead with)
-# with training images of literal quiz cards, and render fake, illegible
-# letter-shaped glyphs to match. Spelling out every text-like element here
-# pushes back on that harder than "text" by itself.
-#
-# Same reasoning applies to the "no nudity"/"no cleavage" wording in
-# generators.models.DEFAULT_IMAGE_PROMPT_EXTRA: a CLIP-based text encoder
-# (what Stable Diffusion checkpoints use) doesn't model negation well, so
-# telling it "no X" in the positive prompt is a weak signal and does little
-# against a checkpoint whose training data skews toward X — confirmed by a
-# checkpoint still rendering exaggerated proportions with that wording
-# appended. A negative prompt genuinely suppresses the listed concepts
-# rather than asking the model not to think about them, so that's the
-# actual guard — the positive-prompt wording stays only as a secondary nudge.
-_DEFAULT_NEGATIVE_PROMPT = (
-    "text, letters, words, writing, typography, diagram, quiz, watermark, signature, "
-    "nsfw, nudity, cleavage, exaggerated breasts, sexualized, revealing clothing, "
-    "low quality, blurry"
-)
+# Default negative prompt, editable per-user via AddonConfig.local_image_negative_prompt
+# (Settings > Local Image Generation) — see ankiforge.models.DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT
+# for why content restrictions belong here rather than in the positive prompt.
+_DEFAULT_NEGATIVE_PROMPT = DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT
 _COMFYUI_POLL_INTERVAL = 1.0
 _SEED_MAX = 2**32 - 1
 
@@ -575,7 +561,12 @@ def build_local_image_client(config: AddonConfig) -> LocalImageClient | None:
             _DEFAULT_STEPS, _DEFAULT_CFG_SCALE, _DEFAULT_SAMPLER_A1111, resolution, config.local_image_advanced
         )
         return Automatic1111Client(
-            config.local_image_url, steps=steps, cfg_scale=cfg_scale, sampler_name=sampler_name, resolution=resolution
+            config.local_image_url,
+            steps=steps,
+            cfg_scale=cfg_scale,
+            sampler_name=sampler_name,
+            resolution=resolution,
+            negative_prompt=config.local_image_negative_prompt,
         )
 
     if config.local_image_backend == "draw_things":
@@ -587,7 +578,12 @@ def build_local_image_client(config: AddonConfig) -> LocalImageClient | None:
             _DEFAULT_STEPS, _DEFAULT_CFG_SCALE, _DEFAULT_SAMPLER_DRAW_THINGS, resolution, config.local_image_advanced
         )
         return DrawThingsClient(
-            config.local_image_url, steps=steps, cfg_scale=cfg_scale, sampler_name=sampler_name, resolution=resolution
+            config.local_image_url,
+            steps=steps,
+            cfg_scale=cfg_scale,
+            sampler_name=sampler_name,
+            resolution=resolution,
+            negative_prompt=config.local_image_negative_prompt,
         )
 
     if config.local_image_backend == "comfyui":
@@ -606,6 +602,7 @@ def build_local_image_client(config: AddonConfig) -> LocalImageClient | None:
             cfg_scale=cfg_scale,
             sampler_name=sampler_name,
             resolution=resolution,
+            negative_prompt=config.local_image_negative_prompt,
         )
 
     return None

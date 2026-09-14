@@ -95,6 +95,9 @@ def _dict_to_config(data: dict[str, object] | None) -> AddonConfig:
         local_image_checkpoint=str(data.get("local_image_checkpoint", defaults.local_image_checkpoint)),
         local_image_resolution=str(data.get("local_image_resolution", defaults.local_image_resolution)),
         local_image_advanced=str(data.get("local_image_advanced", defaults.local_image_advanced)),
+        local_image_negative_prompt=str(
+            data.get("local_image_negative_prompt", defaults.local_image_negative_prompt)
+        ),
         image_prompt_template=str(data.get("image_prompt_template", defaults.image_prompt_template)),
         image_prompt_template_detailed=str(
             data.get("image_prompt_template_detailed", defaults.image_prompt_template_detailed)

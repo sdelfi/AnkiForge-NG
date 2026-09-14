@@ -11,6 +11,7 @@ from ankiforge.models import (
     DEFAULT_IMAGE_PROMPT_EXTRA,
     DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE,
     DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED,
+    DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT,
     DEFAULT_QA_IMAGE_PROMPT_TEMPLATE,
     AddonConfig,
 )
@@ -103,6 +104,7 @@ def _build_config_from_dialog_state(
     local_image_checkpoint: str = "",
     local_image_resolution: str = "auto",
     local_image_advanced: str = "",
+    local_image_negative_prompt: str = DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT,
     image_prompt_template: str = DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE,
     image_prompt_template_detailed: str = DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED,
     qa_image_prompt_template: str = DEFAULT_QA_IMAGE_PROMPT_TEMPLATE,
@@ -126,6 +128,8 @@ def _build_config_from_dialog_state(
         local_image_resolution: "auto", "512", "768", or "1024".
         local_image_advanced: Optional raw JSON overrides for steps/cfg_scale/
             sampler_name/resolution — see AddonConfig.local_image_advanced.
+        local_image_negative_prompt: Negative prompt for local image backends —
+            see AddonConfig.local_image_negative_prompt.
         image_prompt_template: Prompt template for Language cards (simple) —
             see AddonConfig.image_prompt_template.
         image_prompt_template_detailed: Prompt template for Language cards
@@ -156,6 +160,7 @@ def _build_config_from_dialog_state(
         local_image_checkpoint=local_image_checkpoint.strip(),
         local_image_resolution=local_image_resolution,
         local_image_advanced=local_image_advanced.strip(),
+        local_image_negative_prompt=local_image_negative_prompt.strip(),
         image_prompt_template=image_prompt_template.strip(),
         image_prompt_template_detailed=image_prompt_template_detailed.strip(),
         qa_image_prompt_template=qa_image_prompt_template.strip(),
@@ -455,6 +460,17 @@ class SettingsDialog:
         self._local_image_advanced_status_label = QLabel("")
         local_image_layout.addRow("", self._local_image_advanced_status_label)
 
+        self._local_image_negative_prompt_input = QPlainTextEdit()
+        self._local_image_negative_prompt_input.setFixedHeight(70)
+        self._local_image_negative_prompt_input.setToolTip(
+            "Concepts to exclude from generated images — a real suppression, unlike "
+            "asking for the same thing with 'no X' in the image prompt itself (text "
+            "encoders don't negate reliably, so that's a much weaker signal). Local "
+            "backends only (Automatic1111/Draw Things/ComfyUI) — OpenRouter/cloud image "
+            "models have no equivalent field. Comma-separated, no placeholders."
+        )
+        local_image_layout.addRow("Negative prompt:", self._local_image_negative_prompt_input)
+
         local_image_connect_row = QHBoxLayout()
         local_image_connect_btn = QPushButton("Test connection")
         local_image_connect_btn.clicked.connect(self._on_test_local_image)
@@ -558,13 +574,17 @@ class SettingsDialog:
         self._image_prompt_extra_input.setToolTip(
             "Appended to every image prompt above, across all modes and image backends "
             "(OpenRouter, local Stable Diffusion). No placeholders — plain extra text. "
-            "Defaults to steering away from sexualized output, which some checkpoints — "
-            "especially uncensored/community local ones — default to even for unrelated "
-            "prompts. Edit or clear it to fit your own checkpoint."
+            "Empty by default — for content restrictions (no NSFW, no text, ...) use the "
+            "Negative prompt field in Local Image Generation instead, which actually "
+            "suppresses those concepts rather than just asking the image model to avoid "
+            "them (a much weaker signal for text-encoder-based models)."
         )
         image_prompt_layout.addRow("Extra instructions:", self._image_prompt_extra_input)
 
         reset_prompts_btn = QPushButton("Reset to defaults")
+        reset_prompts_btn.setToolTip(
+            "Also resets the Negative prompt field under Local Image Generation above."
+        )
         reset_prompts_btn.clicked.connect(self._on_reset_image_prompts)
         image_prompt_layout.addRow("", reset_prompts_btn)
 
@@ -612,6 +632,7 @@ class SettingsDialog:
         )
         self._local_image_resolution_combo.setCurrentIndex(resolution_index)
         self._local_image_advanced_input.setPlainText(config.local_image_advanced)
+        self._local_image_negative_prompt_input.setPlainText(config.local_image_negative_prompt)
         self._update_local_image_visibility()
 
         self._image_prompt_template_input.setPlainText(config.image_prompt_template)
@@ -782,11 +803,12 @@ class SettingsDialog:
         self._populate_combos(config)
 
     def _on_reset_image_prompts(self) -> None:
-        """Reset all image prompt template fields to their built-in defaults."""
+        """Reset all image prompt/negative-prompt fields to their built-in defaults."""
         self._image_prompt_template_input.setPlainText(DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE)
         self._image_prompt_template_detailed_input.setPlainText(DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED)
         self._qa_image_prompt_template_input.setPlainText(DEFAULT_QA_IMAGE_PROMPT_TEMPLATE)
         self._image_prompt_extra_input.setPlainText(DEFAULT_IMAGE_PROMPT_EXTRA)
+        self._local_image_negative_prompt_input.setPlainText(DEFAULT_LOCAL_IMAGE_NEGATIVE_PROMPT)
 
     def _on_connect(self) -> None:
         """Connect button handler — validate key + load models."""
@@ -968,6 +990,7 @@ class SettingsDialog:
             local_image_checkpoint=self._local_image_checkpoint_input.text(),
             local_image_resolution=self._local_image_resolution_combo.currentData() or "auto",
             local_image_advanced=self._local_image_advanced_input.toPlainText().strip(),
+            local_image_negative_prompt=self._local_image_negative_prompt_input.toPlainText().strip(),
             image_prompt_template=self._image_prompt_template_input.toPlainText().strip()
             or DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE,
             image_prompt_template_detailed=self._image_prompt_template_detailed_input.toPlainText().strip()
