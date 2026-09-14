@@ -60,8 +60,20 @@ _DISTILLED_CHECKPOINT_MARKERS = ("turbo", "lightning", "lcm")
 # with training images of literal quiz cards, and render fake, illegible
 # letter-shaped glyphs to match. Spelling out every text-like element here
 # pushes back on that harder than "text" by itself.
+#
+# Same reasoning applies to the "no nudity"/"no cleavage" wording in
+# generators.models.DEFAULT_IMAGE_PROMPT_EXTRA: a CLIP-based text encoder
+# (what Stable Diffusion checkpoints use) doesn't model negation well, so
+# telling it "no X" in the positive prompt is a weak signal and does little
+# against a checkpoint whose training data skews toward X — confirmed by a
+# checkpoint still rendering exaggerated proportions with that wording
+# appended. A negative prompt genuinely suppresses the listed concepts
+# rather than asking the model not to think about them, so that's the
+# actual guard — the positive-prompt wording stays only as a secondary nudge.
 _DEFAULT_NEGATIVE_PROMPT = (
-    "text, letters, words, writing, typography, diagram, quiz, watermark, signature, low quality, blurry"
+    "text, letters, words, writing, typography, diagram, quiz, watermark, signature, "
+    "nsfw, nudity, cleavage, exaggerated breasts, sexualized, revealing clothing, "
+    "low quality, blurry"
 )
 _COMFYUI_POLL_INTERVAL = 1.0
 _SEED_MAX = 2**32 - 1
