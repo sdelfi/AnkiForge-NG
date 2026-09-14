@@ -251,7 +251,7 @@ QA_BACK_TEMPLATE = (
   <div class="question">{{Question}}</div>
   <hr id="answer">
   <div class="answer">{{Answer}}</div>
-  <div class="branding">AnkiForge</div>
+  <div class="branding">AnkiForge NG</div>
 </div>\n"""
     + _HLJS_SCRIPT
 )
@@ -265,18 +265,21 @@ QA_CSS = _BASE_CSS
 QA_IMAGE_FRONT_TEMPLATE = """\
 <div class="ankiforge-card front">
   <div class="question">{{Question}}</div>
+  {{#Image}}
+  <div class="image">{{Image}}</div>
+  {{/Image}}
 </div>"""
 
 QA_IMAGE_BACK_TEMPLATE = (
     """\
 <div class="ankiforge-card back">
   <div class="question">{{Question}}</div>
-  <hr id="answer">
-  <div class="answer">{{Answer}}</div>
   {{#Image}}
   <div class="image">{{Image}}</div>
   {{/Image}}
-  <div class="branding">AnkiForge</div>
+  <hr id="answer">
+  <div class="answer">{{Answer}}</div>
+  <div class="branding">AnkiForge NG</div>
 </div>\n"""
     + _HLJS_SCRIPT
 )
@@ -299,7 +302,7 @@ QA_AUDIO_BACK_TEMPLATE = (
   <div class="question">{{Question}}</div>
   <hr id="answer">
   <div class="answer">{{Answer}}</div>
-  <div class="branding">AnkiForge</div>
+  <div class="branding">AnkiForge NG</div>
 </div>\n"""
     + _HLJS_SCRIPT
 )
@@ -314,6 +317,9 @@ LANGUAGE_FRONT_TEMPLATE = """\
 <div class="ankiforge-card front">
   <div class="word">{{Word}}</div>
   {{#Transcription}}<div class="transcription">{{Transcription}}</div>{{/Transcription}}
+  {{#Image}}
+  <div class="image">{{Image}}</div>
+  {{/Image}}
   {{Audio}}
 </div>
 <script>var a=document.querySelector("audio");if(a)a.play();</script>"""
@@ -323,18 +329,18 @@ LANGUAGE_BACK_TEMPLATE = (
 <div class="ankiforge-card back">
   <div class="word">{{Word}}</div>
   {{#Transcription}}<div class="transcription">{{Transcription}}</div>{{/Transcription}}
-  <hr id="answer">
-  <div class="definition">{{Definition}}</div>
-  <div class="example">{{Example}}</div>
   {{#Image}}
   <div class="image">{{Image}}</div>
   {{/Image}}
+  <hr id="answer">
+  <div class="definition">{{Definition}}</div>
+  <div class="example">{{Example}}</div>
   <div class="audio-controls">
     <span data-role="def-audio">{{AudioDefinition}}</span>
     <span data-role="silence" style="display:none">{{AudioSilence}}</span>
     <span data-role="ex-audio">{{AudioExample}}</span>
   </div>
-  <div class="branding">AnkiForge</div>
+  <div class="branding">AnkiForge NG</div>
 </div>\n"""
     + _HLJS_SCRIPT
     + """
@@ -372,8 +378,44 @@ _LANGUAGE_FIELDS = (
 )
 
 
+def _sync_template_and_css(model: dict[str, Any], models: Any, *, qfmt: str, afmt: str, css: str) -> bool:  # noqa: ANN401
+    """Sync an existing note type's Card 1 template and CSS to the given values.
+
+    Used to push template/branding/CSS changes (shipped in a new AnkiForge
+    NG version) out to note types that were already created in a user's
+    collection — without this, `ensure_*` below only creates the note type
+    once and never revisits it, so existing decks would be stuck on
+    whatever templates were current the first time each note type was made.
+
+    Args:
+        model: Existing note type dict.
+        models: Anki ModelManager.
+        qfmt: Desired front template.
+        afmt: Desired back template.
+        css: Desired CSS.
+
+    Returns:
+        True if anything changed (caller is responsible for models.save()).
+    """
+    changed = False
+    tmpl = model["tmpls"][0]
+    if tmpl["qfmt"] != qfmt:
+        tmpl["qfmt"] = qfmt
+        changed = True
+    if tmpl["afmt"] != afmt:
+        tmpl["afmt"] = afmt
+        changed = True
+    if model.get("css") != css:
+        model["css"] = css
+        changed = True
+    return changed
+
+
 def ensure_qa_note_type() -> dict[str, Any]:
     """Create or find existing 'AnkiForge QA' note type.
+
+    If the note type already exists, syncs its template/CSS to the current
+    version.
 
     Returns:
         Note type dict (Anki model dict).
@@ -383,6 +425,8 @@ def ensure_qa_note_type() -> dict[str, Any]:
 
     existing = models.by_name(QA_NOTE_TYPE_NAME)
     if existing is not None:
+        if _sync_template_and_css(existing, models, qfmt=QA_FRONT_TEMPLATE, afmt=QA_BACK_TEMPLATE, css=QA_CSS):
+            models.save(existing)
         return existing  # type: ignore[no-any-return]
 
     model: dict[str, Any] = models.new(QA_NOTE_TYPE_NAME)
@@ -406,6 +450,9 @@ def ensure_qa_note_type() -> dict[str, Any]:
 def ensure_qa_image_note_type() -> dict[str, Any]:
     """Create or find existing 'AnkiForge QA+Image' note type.
 
+    If the note type already exists, syncs its template/CSS to the current
+    version.
+
     Returns:
         Note type dict (Anki model dict).
     """
@@ -414,6 +461,10 @@ def ensure_qa_image_note_type() -> dict[str, Any]:
 
     existing = models.by_name(QA_IMAGE_NOTE_TYPE_NAME)
     if existing is not None:
+        if _sync_template_and_css(
+            existing, models, qfmt=QA_IMAGE_FRONT_TEMPLATE, afmt=QA_IMAGE_BACK_TEMPLATE, css=QA_IMAGE_CSS
+        ):
+            models.save(existing)
         return existing  # type: ignore[no-any-return]
 
     model: dict[str, Any] = models.new(QA_IMAGE_NOTE_TYPE_NAME)
@@ -437,6 +488,9 @@ def ensure_qa_image_note_type() -> dict[str, Any]:
 def ensure_qa_audio_note_type() -> dict[str, Any]:
     """Create or find existing 'AnkiForge QA+Audio' note type.
 
+    If the note type already exists, syncs its template/CSS to the current
+    version.
+
     Returns:
         Note type dict (Anki model dict).
     """
@@ -445,6 +499,10 @@ def ensure_qa_audio_note_type() -> dict[str, Any]:
 
     existing = models.by_name(QA_AUDIO_NOTE_TYPE_NAME)
     if existing is not None:
+        if _sync_template_and_css(
+            existing, models, qfmt=QA_AUDIO_FRONT_TEMPLATE, afmt=QA_AUDIO_BACK_TEMPLATE, css=QA_AUDIO_CSS
+        ):
+            models.save(existing)
         return existing  # type: ignore[no-any-return]
 
     model: dict[str, Any] = models.new(QA_AUDIO_NOTE_TYPE_NAME)
@@ -518,16 +576,9 @@ def _upgrade_language_note_type(model: dict[str, Any], models: Any) -> dict[str,
             models.add_field(model, field)
             changed = True
 
-    tmpl = model["tmpls"][0]
-    if tmpl["qfmt"] != LANGUAGE_FRONT_TEMPLATE:
-        tmpl["qfmt"] = LANGUAGE_FRONT_TEMPLATE
-        changed = True
-    if tmpl["afmt"] != LANGUAGE_BACK_TEMPLATE:
-        tmpl["afmt"] = LANGUAGE_BACK_TEMPLATE
-        changed = True
-
-    if model.get("css") != LANGUAGE_CSS:
-        model["css"] = LANGUAGE_CSS
+    if _sync_template_and_css(
+        model, models, qfmt=LANGUAGE_FRONT_TEMPLATE, afmt=LANGUAGE_BACK_TEMPLATE, css=LANGUAGE_CSS
+    ):
         changed = True
 
     if changed:

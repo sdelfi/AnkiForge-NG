@@ -140,7 +140,7 @@ class TestEnsureQaNoteTypeExisting:
     """Tests when the note type already exists."""
 
     def test_returns_existing_note_type(self, mock_mw: MagicMock) -> None:
-        existing = {"name": NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
+        existing = {"name": NOTE_TYPE_NAME, "flds": [], "tmpls": [{"qfmt": "old", "afmt": "old"}], "css": "old"}
         mock_mw.col.models.by_name.return_value = existing
 
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
@@ -148,6 +148,19 @@ class TestEnsureQaNoteTypeExisting:
 
         assert result is existing
         mock_mw.col.models.add.assert_not_called()
+
+    def test_syncs_stale_template_and_css(self, mock_mw: MagicMock) -> None:
+        """Regression test: previously an existing note type was returned as-is,
+        so a template/branding change shipped in a new version never reached
+        decks created before that version."""
+        existing = {"name": NOTE_TYPE_NAME, "flds": [], "tmpls": [{"qfmt": "old", "afmt": "old"}], "css": "old"}
+        mock_mw.col.models.by_name.return_value = existing
+
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=mock_mw):
+            result = ensure_qa_note_type()
+
+        assert "AnkiForge NG" in result["tmpls"][0]["afmt"]
+        mock_mw.col.models.save.assert_called_once_with(existing)
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +300,15 @@ class TestEnsureLanguageNoteTypeCreatesNew:
 
         back = result["tmpls"][0]["afmt"]
         assert "{{Image}}" in back
+
+    def test_front_template_contains_image(self, language_mock_mw: MagicMock) -> None:
+        """The image is a recall cue — a learner should see it before flipping
+        the card, not only as confirmation on the back."""
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
+            result = ensure_language_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "{{Image}}" in front
 
     def test_css_supports_night_mode(self, language_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=language_mock_mw):
@@ -471,6 +493,15 @@ class TestEnsureQaImageNoteTypeCreatesNew:
         back = result["tmpls"][0]["afmt"]
         assert "{{Image}}" in back
 
+    def test_front_template_contains_image(self, qa_image_mock_mw: MagicMock) -> None:
+        """The image is a recall cue — a learner should see it before flipping
+        the card, not only as confirmation on the back."""
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        front = result["tmpls"][0]["qfmt"]
+        assert "{{Image}}" in front
+
     def test_image_has_max_width(self, qa_image_mock_mw: MagicMock) -> None:
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
             result = ensure_qa_image_note_type()
@@ -507,7 +538,12 @@ class TestEnsureQaImageNoteTypeExisting:
     """Tests when QA+Image note type already exists."""
 
     def test_returns_existing_note_type(self, qa_image_mock_mw: MagicMock) -> None:
-        existing = {"name": QA_IMAGE_NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
+        existing = {
+            "name": QA_IMAGE_NOTE_TYPE_NAME,
+            "flds": [],
+            "tmpls": [{"qfmt": "old", "afmt": "old"}],
+            "css": "old",
+        }
         qa_image_mock_mw.col.models.by_name.return_value = existing
 
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
@@ -515,6 +551,25 @@ class TestEnsureQaImageNoteTypeExisting:
 
         assert result is existing
         qa_image_mock_mw.col.models.add.assert_not_called()
+
+    def test_syncs_stale_template_to_show_image_on_front(self, qa_image_mock_mw: MagicMock) -> None:
+        """Regression test: the front template didn't show the generated image,
+        even though seeing it is the whole point of a recall cue — it's added
+        to the front now, but only reaches already-created decks via sync."""
+        existing = {
+            "name": QA_IMAGE_NOTE_TYPE_NAME,
+            "flds": [],
+            "tmpls": [{"qfmt": "old", "afmt": "old"}],
+            "css": "old",
+        }
+        qa_image_mock_mw.col.models.by_name.return_value = existing
+
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_image_mock_mw):
+            result = ensure_qa_image_note_type()
+
+        assert "{{Image}}" in result["tmpls"][0]["qfmt"]
+        assert "AnkiForge NG" in result["tmpls"][0]["afmt"]
+        qa_image_mock_mw.col.models.save.assert_called_once_with(existing)
 
 
 class TestQaImageTemplateHtmlValidity:
@@ -643,7 +698,12 @@ class TestEnsureQaAudioNoteTypeExisting:
     """Tests when QA+Audio note type already exists."""
 
     def test_returns_existing_note_type(self, qa_audio_mock_mw: MagicMock) -> None:
-        existing = {"name": QA_AUDIO_NOTE_TYPE_NAME, "flds": [], "tmpls": [], "css": ""}
+        existing = {
+            "name": QA_AUDIO_NOTE_TYPE_NAME,
+            "flds": [],
+            "tmpls": [{"qfmt": "old", "afmt": "old"}],
+            "css": "old",
+        }
         qa_audio_mock_mw.col.models.by_name.return_value = existing
 
         with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
@@ -651,6 +711,21 @@ class TestEnsureQaAudioNoteTypeExisting:
 
         assert result is existing
         qa_audio_mock_mw.col.models.add.assert_not_called()
+
+    def test_syncs_stale_template_and_css(self, qa_audio_mock_mw: MagicMock) -> None:
+        existing = {
+            "name": QA_AUDIO_NOTE_TYPE_NAME,
+            "flds": [],
+            "tmpls": [{"qfmt": "old", "afmt": "old"}],
+            "css": "old",
+        }
+        qa_audio_mock_mw.col.models.by_name.return_value = existing
+
+        with patch("ankiforge.anki_bridge.note_types._get_mw", return_value=qa_audio_mock_mw):
+            result = ensure_qa_audio_note_type()
+
+        assert "AnkiForge NG" in result["tmpls"][0]["afmt"]
+        qa_audio_mock_mw.col.models.save.assert_called_once_with(existing)
 
 
 class TestQaAudioTemplateHtmlValidity:
