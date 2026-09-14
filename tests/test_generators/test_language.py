@@ -608,6 +608,45 @@ class TestPrompt:
         assert image_prompt.lower().count("late payer") >= 2
         assert "main visual focus" in image_prompt.lower()
 
+    def test_image_prompt_extra_is_appended(self, mock_client: MagicMock) -> None:
+        generator = LanguageGenerator(
+            client=mock_client,
+            text_model="openai/gpt-4o",
+            audio_model="openai/tts-1",
+            image_model="local-image::sd",
+            image_prompt_extra="no nudity, fully clothed",
+        )
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(include_photo=True),
+        )
+        generator.generate(request, MagicMock())
+        image_prompt = mock_client.generate_image.call_args[0][0]
+        assert image_prompt.endswith("no nudity, fully clothed")
+
+    def test_custom_image_prompt_template_is_used(self, mock_client: MagicMock) -> None:
+        generator = LanguageGenerator(
+            client=mock_client,
+            text_model="openai/gpt-4o",
+            audio_model="openai/tts-1",
+            image_model="local-image::sd",
+            image_prompt_template='Draw "{word}" — context: {example}',
+            image_prompt_template_detailed='Draw "{word}" — context: {example}',
+        )
+        request = CardRequest(
+            mode=GenerationMode.LANGUAGE,
+            input_text="apple",
+            target_deck="Test",
+            language="en",
+            language_options=LanguageOptions(include_photo=True),
+        )
+        generator.generate(request, MagicMock())
+        image_prompt = mock_client.generate_image.call_args[0][0]
+        assert image_prompt.startswith('Draw "apple" — context:')
+
 
 # ---------------------------------------------------------------------------
 # _generate_silence_wav

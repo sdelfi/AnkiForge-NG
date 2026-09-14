@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING
 
 from ankiforge.anki_bridge.note_types import LANGUAGE_NOTE_TYPE_NAME
 from ankiforge.generators._retry import retry_api_call
-from ankiforge.models import GeneratedCard, GenerationProgress
+from ankiforge.models import (
+    DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE,
+    DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED,
+    GeneratedCard,
+    GenerationProgress,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -53,30 +58,6 @@ _DEFAULT_SYSTEM_PROMPT = (
     '  definition without the word: "Moving very quickly" ← WRONG, must start with the word\n'
     '  example without the word: "The cars moved fast along the road" ← WRONG, '
     "the word must appear in the example sentence"
-)
-
-_IMAGE_PROMPT_TEMPLATE = (
-    'An illustration depicting a scene, for the word/phrase "{word}". '
-    'The scene depicts: "{example}". '
-    'The image must clearly and unambiguously depict "{word}" as the main visual '
-    "focus — a viewer should be able to guess the word just by looking at the image, "
-    "without reading the sentence. Clean style — just the illustrated scene itself, "
-    "no text, no letters, no words, no writing, no signage, no diagrams, no quiz or "
-    "card layout, no watermarks."
-)
-
-_DETAILED_IMAGE_PROMPT_TEMPLATE = (
-    "A stunning, ultra-high-quality photorealistic image depicting a scene, "
-    'for the word/phrase "{word}". '
-    'The scene vividly depicts the sentence: "{example}". '
-    'The image must clearly and unambiguously depict "{word}" as the main visual '
-    "focus — a viewer should be able to guess the word just by looking at the image, "
-    "without reading the sentence. "
-    "The image should be visually rich with cinematic lighting, vivid colors, and fine details. "
-    "Composition: centered subject with a complementary background that reinforces the meaning. "
-    "Style: professional photography or digital art, magazine-cover quality. Mood: evocative, "
-    "memorable — just the illustrated scene itself, no text, no letters, no words, no writing, "
-    "no signage, no diagrams, no quiz or card layout, no watermarks, no logos."
 )
 
 # WAV parameters for silence generation (must match TTS output)
@@ -199,6 +180,9 @@ class LanguageGenerator:
         text_pricing: ModelPricingCache | None = None,
         image_pricing: ModelPricingCache | None = None,
         audio_pricing: ModelPricingCache | None = None,
+        image_prompt_template: str = DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE,
+        image_prompt_template_detailed: str = DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED,
+        image_prompt_extra: str = "",
     ) -> None:
         self._client = client
         self._text_model = text_model
@@ -207,6 +191,9 @@ class LanguageGenerator:
         self._text_pricing = text_pricing
         self._image_pricing = image_pricing
         self._audio_pricing = audio_pricing
+        self._image_prompt_template = image_prompt_template
+        self._image_prompt_template_detailed = image_prompt_template_detailed
+        self._image_prompt_extra = image_prompt_extra
 
     def generate(
         self,
@@ -280,8 +267,10 @@ class LanguageGenerator:
             # Image: scene from example
             image_data: bytes | None = None
             if opts.include_photo and example:
-                template = _DETAILED_IMAGE_PROMPT_TEMPLATE if opts.detailed_image else _IMAGE_PROMPT_TEMPLATE
+                template = self._image_prompt_template_detailed if opts.detailed_image else self._image_prompt_template
                 image_prompt = template.format(word=word, example=example)
+                if self._image_prompt_extra:
+                    image_prompt = f"{image_prompt} {self._image_prompt_extra}"
                 size = opts.image_size if opts.image_size != "auto" else None
                 image_data = retry_api_call(
                     lambda p=image_prompt, sz=size: self._client.generate_image(p, self._image_model, size=sz),

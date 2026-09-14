@@ -134,6 +134,30 @@ class TestGenerate:
         image_call_args = mock_client.generate_image.call_args[0][0]
         assert "ДНК" in image_call_args
 
+    def test_image_prompt_extra_is_appended(self, mock_client: MagicMock) -> None:
+        generator = ImageGenerator(
+            client=mock_client,
+            text_model="openai/gpt-4o",
+            image_model="openai/dall-e-3",
+            image_prompt_extra="no nudity, fully clothed",
+        )
+        request = CardRequest(mode=GenerationMode.IMAGE, input_text="What is DNS?", target_deck="Deck")
+        generator.generate(request, MagicMock())
+        image_prompt = mock_client.generate_image.call_args[0][0]
+        assert image_prompt.endswith("no nudity, fully clothed")
+
+    def test_custom_image_prompt_template_is_used(self, mock_client: MagicMock) -> None:
+        generator = ImageGenerator(
+            client=mock_client,
+            text_model="openai/gpt-4o",
+            image_model="openai/dall-e-3",
+            image_prompt_template="Draw: {topic}",
+        )
+        request = CardRequest(mode=GenerationMode.IMAGE, input_text="What is DNS?", target_deck="Deck")
+        generator.generate(request, MagicMock())
+        image_prompt = mock_client.generate_image.call_args[0][0]
+        assert image_prompt == "Draw: What is DNS?"
+
     def test_text_model_used_for_text(
         self,
         generator: ImageGenerator,

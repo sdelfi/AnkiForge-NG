@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING
 
 from ankiforge.config.manager import get_config, save_config, validate_api_key, validate_custom_endpoint
 from ankiforge.local_image.client import validate_local_image_backend
-from ankiforge.models import AddonConfig
+from ankiforge.models import (
+    DEFAULT_IMAGE_PROMPT_EXTRA,
+    DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE,
+    DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED,
+    DEFAULT_QA_IMAGE_PROMPT_TEMPLATE,
+    AddonConfig,
+)
 from ankiforge.openrouter.models import Modality, Model
 from ankiforge.openrouter.routing_client import LOCAL_IMAGE_MODEL_ID, add_custom_prefix, is_custom_model
 from ankiforge.ui.styles import DIALOG_QSS
@@ -97,6 +103,10 @@ def _build_config_from_dialog_state(
     local_image_checkpoint: str = "",
     local_image_resolution: str = "auto",
     local_image_advanced: str = "",
+    image_prompt_template: str = DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE,
+    image_prompt_template_detailed: str = DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED,
+    qa_image_prompt_template: str = DEFAULT_QA_IMAGE_PROMPT_TEMPLATE,
+    image_prompt_extra: str = DEFAULT_IMAGE_PROMPT_EXTRA,
 ) -> AddonConfig:
     """Build AddonConfig from dialog values.
 
@@ -116,6 +126,14 @@ def _build_config_from_dialog_state(
         local_image_resolution: "auto", "512", "768", or "1024".
         local_image_advanced: Optional raw JSON overrides for steps/cfg_scale/
             sampler_name/resolution — see AddonConfig.local_image_advanced.
+        image_prompt_template: Prompt template for Language cards (simple) —
+            see AddonConfig.image_prompt_template.
+        image_prompt_template_detailed: Prompt template for Language cards
+            ('Detailed image' on) — see AddonConfig.image_prompt_template_detailed.
+        qa_image_prompt_template: Prompt template for QA+Image/Material —
+            see AddonConfig.qa_image_prompt_template.
+        image_prompt_extra: Extra instructions appended to every generated
+            image prompt — see AddonConfig.image_prompt_extra.
 
     Returns:
         Configured AddonConfig.
@@ -138,6 +156,10 @@ def _build_config_from_dialog_state(
         local_image_checkpoint=local_image_checkpoint.strip(),
         local_image_resolution=local_image_resolution,
         local_image_advanced=local_image_advanced.strip(),
+        image_prompt_template=image_prompt_template.strip(),
+        image_prompt_template_detailed=image_prompt_template_detailed.strip(),
+        qa_image_prompt_template=qa_image_prompt_template.strip(),
+        image_prompt_extra=image_prompt_extra.strip(),
     )
 
 
@@ -492,6 +514,62 @@ class SettingsDialog:
         balance_group.setLayout(balance_layout)
         layout.addWidget(balance_group)
 
+        # === Section 4: Image Generation Prompts ===
+        image_prompt_group = QGroupBox("Image Generation Prompts")
+        image_prompt_layout = QFormLayout()
+        image_prompt_layout.setSpacing(8)
+        image_prompt_group.setLayout(image_prompt_layout)
+
+        image_prompt_hint = QLabel(
+            "Edit the prompt templates AnkiForge sends to the image model, per generation "
+            "mode — no code change needed. A {placeholder} left in by a typo raises an "
+            "error at generation time rather than silently breaking the prompt."
+        )
+        image_prompt_hint.setWordWrap(True)
+        image_prompt_hint.setStyleSheet("color: palette(placeholderText);")
+        image_prompt_layout.addRow("", image_prompt_hint)
+
+        self._image_prompt_template_input = QPlainTextEdit()
+        self._image_prompt_template_input.setFixedHeight(90)
+        self._image_prompt_template_input.setToolTip(
+            "Used for Language cards (Image checkbox, 'Detailed image' OFF).\n"
+            "Placeholders: {word} — the word/phrase; {example} — the generated example sentence."
+        )
+        image_prompt_layout.addRow("Language (simple):", self._image_prompt_template_input)
+
+        self._image_prompt_template_detailed_input = QPlainTextEdit()
+        self._image_prompt_template_detailed_input.setFixedHeight(90)
+        self._image_prompt_template_detailed_input.setToolTip(
+            "Used for Language cards when 'Detailed image' is ON.\n"
+            "Placeholders: {word} — the word/phrase; {example} — the generated example sentence."
+        )
+        image_prompt_layout.addRow("Language (detailed):", self._image_prompt_template_detailed_input)
+
+        self._qa_image_prompt_template_input = QPlainTextEdit()
+        self._qa_image_prompt_template_input.setFixedHeight(70)
+        self._qa_image_prompt_template_input.setToolTip(
+            "Used for QA + Image cards and From Material (with images).\n"
+            "Placeholder: {topic} — the question/topic text."
+        )
+        image_prompt_layout.addRow("QA + Image / Material:", self._qa_image_prompt_template_input)
+
+        self._image_prompt_extra_input = QPlainTextEdit()
+        self._image_prompt_extra_input.setFixedHeight(70)
+        self._image_prompt_extra_input.setToolTip(
+            "Appended to every image prompt above, across all modes and image backends "
+            "(OpenRouter, local Stable Diffusion). No placeholders — plain extra text. "
+            "Defaults to steering away from sexualized output, which some checkpoints — "
+            "especially uncensored/community local ones — default to even for unrelated "
+            "prompts. Edit or clear it to fit your own checkpoint."
+        )
+        image_prompt_layout.addRow("Extra instructions:", self._image_prompt_extra_input)
+
+        reset_prompts_btn = QPushButton("Reset to defaults")
+        reset_prompts_btn.clicked.connect(self._on_reset_image_prompts)
+        image_prompt_layout.addRow("", reset_prompts_btn)
+
+        layout.addWidget(image_prompt_group)
+
         # Scroll area with content
         from ankiforge.ui.styles import get_dialog_size, wrap_in_scroll_area
 
@@ -535,6 +613,11 @@ class SettingsDialog:
         self._local_image_resolution_combo.setCurrentIndex(resolution_index)
         self._local_image_advanced_input.setPlainText(config.local_image_advanced)
         self._update_local_image_visibility()
+
+        self._image_prompt_template_input.setPlainText(config.image_prompt_template)
+        self._image_prompt_template_detailed_input.setPlainText(config.image_prompt_template_detailed)
+        self._qa_image_prompt_template_input.setPlainText(config.qa_image_prompt_template)
+        self._image_prompt_extra_input.setPlainText(config.image_prompt_extra)
 
         # Show cached values
         if config.cached_usage is not None:
@@ -697,6 +780,13 @@ class SettingsDialog:
             audio_model=_get_selected_model_id(self._audio_model_combo),
         )
         self._populate_combos(config)
+
+    def _on_reset_image_prompts(self) -> None:
+        """Reset all image prompt template fields to their built-in defaults."""
+        self._image_prompt_template_input.setPlainText(DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE)
+        self._image_prompt_template_detailed_input.setPlainText(DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED)
+        self._qa_image_prompt_template_input.setPlainText(DEFAULT_QA_IMAGE_PROMPT_TEMPLATE)
+        self._image_prompt_extra_input.setPlainText(DEFAULT_IMAGE_PROMPT_EXTRA)
 
     def _on_connect(self) -> None:
         """Connect button handler — validate key + load models."""
@@ -878,6 +968,13 @@ class SettingsDialog:
             local_image_checkpoint=self._local_image_checkpoint_input.text(),
             local_image_resolution=self._local_image_resolution_combo.currentData() or "auto",
             local_image_advanced=self._local_image_advanced_input.toPlainText().strip(),
+            image_prompt_template=self._image_prompt_template_input.toPlainText().strip()
+            or DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE,
+            image_prompt_template_detailed=self._image_prompt_template_detailed_input.toPlainText().strip()
+            or DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED,
+            qa_image_prompt_template=self._qa_image_prompt_template_input.toPlainText().strip()
+            or DEFAULT_QA_IMAGE_PROMPT_TEMPLATE,
+            image_prompt_extra=self._image_prompt_extra_input.toPlainText().strip(),
         )
         save_config(config)
         self._dialog.accept()

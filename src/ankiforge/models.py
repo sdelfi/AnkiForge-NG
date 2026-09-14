@@ -5,6 +5,55 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+# Appended to every generated image prompt (all generators, all backends).
+# Guards against checkpoints — especially uncensored/community local ones —
+# defaulting to sexualized depictions of people for prompts that have
+# nothing to do with that (e.g. an SDXL-Turbo variant rendering exaggerated
+# cleavage for a plain "two coworkers talking" scene). Editable in Settings
+# so this doesn't need a code change/release to tune per checkpoint.
+DEFAULT_IMAGE_PROMPT_EXTRA = (
+    "Modest and tasteful, appropriate for all audiences: fully clothed, no cleavage, "
+    "no exaggerated body proportions, no nudity, no sexualized content."
+)
+
+# Editable image prompt templates — Settings lets you rewrite these per
+# generation mode without a code change. Available placeholders are called
+# out in each one; an unrecognized {placeholder} left in by a typo raises a
+# KeyError at generation time rather than silently mangling the prompt.
+
+# Language cards (Language mode) — placeholders: {word}, {example}
+DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE = (
+    'An illustration depicting a scene, for the word/phrase "{word}". '
+    'The scene depicts: "{example}". '
+    'The image must clearly and unambiguously depict "{word}" as the main visual '
+    "focus — a viewer should be able to guess the word just by looking at the image, "
+    "without reading the sentence. Clean style — just the illustrated scene itself, "
+    "no text, no letters, no words, no writing, no signage, no diagrams, no quiz or "
+    "card layout, no watermarks."
+)
+
+# Language cards, "Detailed image" option — placeholders: {word}, {example}
+DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED = (
+    "A stunning, ultra-high-quality photorealistic image depicting a scene, "
+    'for the word/phrase "{word}". '
+    'The scene vividly depicts the sentence: "{example}". '
+    'The image must clearly and unambiguously depict "{word}" as the main visual '
+    "focus — a viewer should be able to guess the word just by looking at the image, "
+    "without reading the sentence. "
+    "The image should be visually rich with cinematic lighting, vivid colors, and fine details. "
+    "Composition: centered subject with a complementary background that reinforces the meaning. "
+    "Style: professional photography or digital art, magazine-cover quality. Mood: evocative, "
+    "memorable — just the illustrated scene itself, no text, no letters, no words, no writing, "
+    "no signage, no diagrams, no quiz or card layout, no watermarks, no logos."
+)
+
+# QA+Image and From Material (with images) modes — placeholder: {topic}
+DEFAULT_QA_IMAGE_PROMPT_TEMPLATE = (
+    "A simple, clear illustration depicting: '{topic}'. "
+    "Clean educational style — just the illustrated scene itself, no text, no letters, "
+    "no words, no writing, no signage, no diagrams."
+)
+
 
 class GenerationMode(Enum):
     """Card generation modes."""
@@ -144,3 +193,13 @@ class AddonConfig:
     # a code change. E.g. '{"steps": 8, "cfg_scale": 2, "sampler_name": "dpmpp_2m_sde"}'.
     # See ankiforge.local_image.client._apply_advanced_overrides.
     local_image_advanced: str = ""
+    # Editable image prompt templates, one per generation mode — see the
+    # DEFAULT_*_TEMPLATE constants above for placeholders and defaults.
+    image_prompt_template: str = DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE
+    image_prompt_template_detailed: str = DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED
+    qa_image_prompt_template: str = DEFAULT_QA_IMAGE_PROMPT_TEMPLATE
+    # Appended to every generated image prompt (all generators, all image
+    # backends) — see DEFAULT_IMAGE_PROMPT_EXTRA above for why this exists.
+    # Editable in Settings so it can be tuned or cleared per checkpoint
+    # without a code change.
+    image_prompt_extra: str = DEFAULT_IMAGE_PROMPT_EXTRA

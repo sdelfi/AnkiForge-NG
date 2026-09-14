@@ -36,23 +36,27 @@ def get_adaptive_dialog_size(
     content_widget: object,
     *,
     extra_height: int = 110,
+    extra_width: int = 40,
     width_pct: float = 0.4,
     min_w: int = 480,
     max_height_pct: float = 0.85,
     min_h: int = 400,
 ) -> tuple[int, int]:
-    """Calculate dialog size: fixed-percentage width, height fit to content.
+    """Calculate dialog size: width and height both fit to content, each capped.
 
-    Sizes the dialog tall enough for `content_widget`'s natural height so it
-    doesn't need to scroll unless the screen itself is too small, while still
-    capping it at `max_height_pct` of the available screen height.
+    Sizes the dialog to `content_widget`'s natural size so it doesn't need
+    scrolling or manual resizing unless the screen itself is too small,
+    while still capping width at `width_pct` and height at `max_height_pct`
+    of the available screen size.
 
     Args:
         content_widget: Widget placed inside the dialog's scroll area — its
-            sizeHint() drives the height calculation.
+            sizeHint() drives the width/height calculation.
         extra_height: Extra vertical space to reserve outside the scroll
             area (button row, margins, etc.).
-        width_pct: Screen width fraction for dialog width.
+        extra_width: Extra horizontal space to reserve outside the scroll
+            area (scrollbar, margins, etc.).
+        width_pct: Maximum screen width fraction the dialog may use.
         min_w: Minimum width.
         max_height_pct: Maximum screen height fraction the dialog may use.
         min_h: Minimum height.
@@ -65,12 +69,15 @@ def get_adaptive_dialog_size(
     screen = QApplication.primaryScreen()
     if screen is not None:
         geom = screen.availableGeometry()
-        w = max(int(geom.width() * width_pct), min_w)
+        max_w = int(geom.width() * width_pct)
         max_h = int(geom.height() * max_height_pct)
     else:
-        w, max_h = min_w, min_h
+        max_w, max_h = min_w, min_h
 
-    natural_h = content_widget.sizeHint().height() + extra_height  # type: ignore[attr-defined]
+    size_hint = content_widget.sizeHint()  # type: ignore[attr-defined]
+    natural_w = size_hint.width() + extra_width
+    natural_h = size_hint.height() + extra_height
+    w = min(max(natural_w, min_w), max_w)
     h = min(max(natural_h, min_h), max_h)
     return w, h
 

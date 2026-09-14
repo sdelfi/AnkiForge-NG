@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from ankiforge.anki_bridge.note_types import QA_IMAGE_NOTE_TYPE_NAME
 from ankiforge.generators._retry import retry_api_call
-from ankiforge.models import GeneratedCard, GenerationProgress
+from ankiforge.models import DEFAULT_QA_IMAGE_PROMPT_TEMPLATE, GeneratedCard, GenerationProgress
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -21,12 +21,6 @@ _SYSTEM_PROMPT = (
     "Do not repeat the question. Answer directly."
 )
 
-_IMAGE_PROMPT_TEMPLATE = (
-    "A simple, clear illustration depicting: '{topic}'. "
-    "Clean educational style — just the illustrated scene itself, no text, no letters, "
-    "no words, no writing, no signage, no diagrams."
-)
-
 
 class ImageGenerator:
     """QA+Image card generator from a list of questions."""
@@ -37,11 +31,15 @@ class ImageGenerator:
         text_model: str,
         image_model: str,
         image_size: str = "auto",
+        image_prompt_template: str = DEFAULT_QA_IMAGE_PROMPT_TEMPLATE,
+        image_prompt_extra: str = "",
     ) -> None:
         self._client = client
         self._text_model = text_model
         self._image_model = image_model
         self._image_size = image_size
+        self._image_prompt_template = image_prompt_template
+        self._image_prompt_extra = image_prompt_extra
 
     def generate(
         self,
@@ -77,7 +75,9 @@ class ImageGenerator:
             )
             progress.current_cost += self._client.last_cost
 
-            image_prompt = _IMAGE_PROMPT_TEMPLATE.format(topic=question)
+            image_prompt = self._image_prompt_template.format(topic=question)
+            if self._image_prompt_extra:
+                image_prompt = f"{image_prompt} {self._image_prompt_extra}"
             image_data = retry_api_call(
                 lambda p=image_prompt, sz=image_size: self._client.generate_image(p, self._image_model, size=sz),
                 item_label=f"image:{question[:30]}",

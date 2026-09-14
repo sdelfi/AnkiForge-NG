@@ -13,6 +13,10 @@ from ankiforge.anki_bridge.note_types import (
 )
 from ankiforge.config.manager import get_config, is_configured
 from ankiforge.models import (
+    DEFAULT_IMAGE_PROMPT_EXTRA,
+    DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE,
+    DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED,
+    DEFAULT_QA_IMAGE_PROMPT_TEMPLATE,
     AddonConfig,
     AnswerDetail,
     CardRequest,
@@ -404,19 +408,36 @@ def _create_generator(
             text_pricing=config.text_model_pricing if config else None,
             image_pricing=config.image_model_pricing if config else None,
             audio_pricing=config.audio_model_pricing if config else None,
+            image_prompt_template=config.image_prompt_template if config else DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE,
+            image_prompt_template_detailed=(
+                config.image_prompt_template_detailed if config else DEFAULT_LANGUAGE_IMAGE_PROMPT_TEMPLATE_DETAILED
+            ),
+            image_prompt_extra=config.image_prompt_extra if config else DEFAULT_IMAGE_PROMPT_EXTRA,
         )
 
     if mode == GenerationMode.MATERIAL:
         from ankiforge.generators.material import MaterialGenerator
 
         return MaterialGenerator(
-            client, text_model, image_model=image_model if include_images else None, image_size=image_size
+            client,
+            text_model,
+            image_model=image_model if include_images else None,
+            image_size=image_size,
+            image_prompt_template=config.qa_image_prompt_template if config else DEFAULT_QA_IMAGE_PROMPT_TEMPLATE,
+            image_prompt_extra=config.image_prompt_extra if config else DEFAULT_IMAGE_PROMPT_EXTRA,
         )
 
     if mode == GenerationMode.IMAGE:
         from ankiforge.generators.image import ImageGenerator
 
-        return ImageGenerator(client, text_model, image_model, image_size=image_size)
+        return ImageGenerator(
+            client,
+            text_model,
+            image_model,
+            image_size=image_size,
+            image_prompt_template=config.qa_image_prompt_template if config else DEFAULT_QA_IMAGE_PROMPT_TEMPLATE,
+            image_prompt_extra=config.image_prompt_extra if config else DEFAULT_IMAGE_PROMPT_EXTRA,
+        )
 
     if mode == GenerationMode.AUDIO:
         from ankiforge.generators.audio import AudioGenerator
@@ -919,7 +940,7 @@ class InputDialog:
         self._dialog = QDialog(mw)
         info = _get_mode_info(mode)
         self._dialog.setWindowTitle(f"AnkiForge — {info['title']}")
-        self._dialog.setMinimumWidth(520)
+        self._dialog.setMinimumWidth(420)
         self._dialog.setStyleSheet(DIALOG_QSS)
 
         # Main dialog layout: scroll + buttons at the bottom
@@ -1240,9 +1261,10 @@ class InputDialog:
 
         dialog_layout.addLayout(buttons_layout)
 
-        # Scale to screen size — width is 30% narrower than the old fixed
-        # 0.4/520 sizing, height auto-fits the content so the scroll area
-        # only kicks in when the screen itself is too small.
+        # Width fits the content's natural size (inputs, labels) instead of a
+        # fixed screen fraction, capped at width_pct so it can't run away on
+        # a wide/ultrawide monitor. Height auto-fits the content too, so the
+        # scroll area only kicks in when the screen itself is too small.
         w, h = get_adaptive_dialog_size(content, width_pct=0.28, min_w=420, min_h=420, max_height_pct=0.95)
         self._dialog.resize(w, h)
 
