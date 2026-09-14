@@ -55,7 +55,14 @@ _DISTILLED_STEPS = 4
 _DISTILLED_CFG_SCALE = 1.5
 _DISTILLED_SAMPLER = "euler_ancestral"
 _DISTILLED_CHECKPOINT_MARKERS = ("turbo", "lightning", "lcm")
-_DEFAULT_NEGATIVE_PROMPT = "text, watermark, signature, low quality, blurry"
+# "text" alone barely dents it — diffusion checkpoints often associate the
+# word "flashcard"/"quiz" (which our own prompt templates used to lead with)
+# with training images of literal quiz cards, and render fake, illegible
+# letter-shaped glyphs to match. Spelling out every text-like element here
+# pushes back on that harder than "text" by itself.
+_DEFAULT_NEGATIVE_PROMPT = (
+    "text, letters, words, writing, typography, diagram, quiz, watermark, signature, low quality, blurry"
+)
 _COMFYUI_POLL_INTERVAL = 1.0
 _SEED_MAX = 2**32 - 1
 

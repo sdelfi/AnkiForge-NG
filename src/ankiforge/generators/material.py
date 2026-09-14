@@ -104,8 +104,9 @@ _GENERATE_PROMPT = (
 )
 
 _IMAGE_PROMPT_TEMPLATE = (
-    "A simple, clear illustration for a flashcard about: '{topic}'. "
-    "Clean educational style, no text, suitable for studying."
+    "A simple, clear illustration depicting: '{topic}'. "
+    "Clean educational style — just the illustrated scene itself, no text, no letters, "
+    "no words, no writing, no signage, no diagrams."
 )
 
 _ANSWER_INSTRUCTIONS: dict[str, str] = {
